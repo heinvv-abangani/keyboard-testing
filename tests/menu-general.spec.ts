@@ -3,28 +3,9 @@ import { test, expect } from '@playwright/test';
 test('count the number of menus on a page', async ({ page }) => {
     await page.goto('https://labelvier.nl/');
 
-    const menusInsideHeader = page.locator('header nav');
-    const menuCount = await menusInsideHeader.count();
+    const menusInsideHeader = page.locator('header nav:visible');
 
-    console.log( 'menu count' + menuCount );
-
-    for (let i = 0; i < menuCount; i++) {
-        const menuItem = menusInsideHeader.nth(i);
-       const isMenuItemVisible = await isElementTrulyVisible(menuItem);
-        console.log(`Menu ${i + 1}: Truly Visible = ${isMenuItemVisible}`);
-
-        // Locate 'a' elements within the current menu item
-        const links = menuItem.locator('a');
-        const linkCount = await links.count();
-
-        for (let j = 0; j < linkCount; j++) {
-            const link = links.nth(j);
-            const linkText = (await link.textContent())?.trim();
-            const href = await link.getAttribute('href');
-            const isLinkVisible = await isElementTrulyVisible(link);
-            console.log(`    Link ${j + 1}: Text = ${linkText}, Href = ${href}, Truly Visible = ${isLinkVisible}`);
-        }
-    }
+    await iterateMenus(menusInsideHeader);
 });
 
 async function isElementTrulyVisible(element) {
@@ -62,4 +43,46 @@ async function isElementTrulyVisible(element) {
 
     // If all checks pass, the element is truly visible
     return true;
+}
+
+async function iterateMenus(menus) {
+    const menuCount = await menus.count();
+
+    console.log( 'menu count' + menuCount );
+
+    for (let i = 0; i < menuCount; i++) {
+        const menuItem = menus.nth(i);
+        const isMenuItemVisible = await isElementTrulyVisible(menuItem);
+        console.log(`Menu ${i + 1}: Truly Visible = ${isMenuItemVisible}`);
+
+        const links = menuItem.locator('a');
+
+        await iterateMenuItems(links);
+
+        // Steps:
+        // Count number of visible and invisible menu items
+        // If all items are visible, end test.
+        // Else:
+            // Select all visible button[aria-expanded] elements on level 1.
+            // Focus each button.
+            // Assert that all menu items become visible.
+            // If not, look select all visible button[aria-expanded] elements on level 2.
+
+        // If: all items become visible on button, focus > End test.
+        // Else: look for non-best practices to make sub menus visible.
+
+        // 1. Focus all vsi
+    }
+}
+
+async function iterateMenuItems( links ) {
+    const linkCount = await links.count();
+
+    for (let j = 0; j < linkCount; j++) {
+        const link = links.nth(j);
+        const linkText = (await link.textContent())?.trim();
+        const href = await link.getAttribute('href');
+        const isLinkVisible = await isElementTrulyVisible(link);
+        console.log(`    Link ${j + 1}: Text = ${linkText}, Href = ${href}, Truly Visible = ${isLinkVisible}`);
+    }
 }
