@@ -4,8 +4,13 @@ import { iterateMenus, iterateMenuItems } from './helpers/menu.ts';
 const testWebsites = [
     'https://academy.bricksbuilder.io/article/menu-builder/',
     'https://labelvier.nl/',
-    'https://www.d-tec.eu/nl',
     'https://www.spankrachtontwerpers.nl/',
+    // 'https://ghost.org/',
+    // 'https://www.framer.com/',
+    // 'https://webflow.com/',
+    // 'https://elementor.com/',
+    // 'https://www.elegantthemes.com/',
+    // 'https://www.d-tec.eu/',
 ];
 
 test('count the number of menus on a page', async ({ page }) => {
