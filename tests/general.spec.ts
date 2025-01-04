@@ -5,19 +5,21 @@ const testWebsites = [
     'https://academy.bricksbuilder.io/article/menu-builder/',
     'https://labelvier.nl/',
     'https://www.spankrachtontwerpers.nl/',
-    // 'https://ghost.org/',
-    // 'https://www.framer.com/',
-    // 'https://webflow.com/',
-    // 'https://elementor.com/',
-    // 'https://www.elegantthemes.com/',
-    // 'https://www.d-tec.eu/',
+    'https://ghost.org/',
+    'https://www.framer.com/',
+    'https://webflow.com/',
+    'https://elementor.com/',
+    'https://www.elegantthemes.com/',
+    'https://www.d-tec.eu/',
 ];
 
-test('keyboard testing', async ({ page }) => {
-    for (let websiteIndex = 0; websiteIndex < testWebsites.length; websiteIndex++) {
+for (let websiteIndex = 0; websiteIndex < testWebsites.length; websiteIndex++) {
+    test(`keyboard testing - ${testWebsites[websiteIndex]}`, async ({ page }) => {
         await page.goto(testWebsites[websiteIndex]);
 
         await test.step(`Visit website and validate skip link - ${testWebsites[websiteIndex]}`, async () => {
+            let isValidSkipLink = false;
+            
             await page.goto(testWebsites[websiteIndex]);
             await page.keyboard.press('Tab');
 
@@ -32,51 +34,56 @@ test('keyboard testing', async ({ page }) => {
 
             await page.keyboard.press('Enter');
 
-            const newFocusedElement = await page.evaluate(() => document.activeElement);
+            await page.waitForTimeout(1000);
+
+            if ( !! href ) {
+                const isFocusOnAnchorTarget = await page.evaluate((href) => {
+                    if (!href || !href.includes('#')) return false;
+
+                    const anchorId = href.split('#')[1];
+                    if (!anchorId) return false;
+
+                    const targetElement = document.getElementById(anchorId);
+
+                    return targetElement === document.activeElement;
+                }, href);
+                
+                if (isFocusOnAnchorTarget) {
+                    isValidSkipLink = true;
+                    console.log('The focus moved to the element referred to by the anchor link.');
+                } else {
+                    console.log('The focus did not move to the element referred to by the anchor link.');
+                    isValidSkipLink = false;
+                }
+            }
 
             const currentUrl = page.url();
-            if (currentUrl.includes(testWebsites[websiteIndex])) {
-                console.log('The page URL has not changed.');
+            const targetUrl = testWebsites[websiteIndex].replace(/\/$/, '') // Remove the trailing slash if present
+                .replace(/[#?].*$/, '');
+
+            if (currentUrl.includes(targetUrl)) {
+                console.log('We are still on the same page.');
             } else {
+                isValidSkipLink = false;
                 console.log('The page URL has changed.');
             }
 
-            // Evaluate the currently focused element
             const focusedElementTag = await page.evaluate(() => document.activeElement?.tagName?.toLowerCase());
 
-            // Check if focus is on <main>
-            if (focusedElementTag === 'main') {
-                console.log('Focus is on the <main> element.');
-            } else {
-                console.log(`Focus is not on <main>, it is on <${focusedElementTag}>.`);
+            if (focusedElementTag === 'main' ) {
+                console.log( 'Focus is on <main>');
+                console.log( `Website has valid skip link - ${testWebsites[websiteIndex]}: ${isValidSkipLink}`);
+                isValidSkipLink = true;
+                return isValidSkipLink;
             }
 
-            // Check if focus is after <header>
-            const isFocusAfterHeader = await page.evaluate(() => {
-                const header = document.querySelector('header');
-                return header && document?.activeElement?.compareDocumentPosition(header) === Node.DOCUMENT_POSITION_FOLLOWING;
-            });
-            if (isFocusAfterHeader) {
-                console.log('Focus is after the <header> element.');
-            } else {
-                console.log('Focus is not after the <header> element.');
-            }
-
-            // Check if focus is after the first <nav>
-            const isFocusAfterFirstNav = await page.evaluate(() => {
-                const firstNav = document.querySelector('nav');
-                return firstNav && document?.activeElement?.compareDocumentPosition(firstNav) === Node.DOCUMENT_POSITION_FOLLOWING;
-            });
-            if (isFocusAfterFirstNav) {
-                console.log('Focus is after the first <nav> element.');
-            } else {
-                console.log('Focus is not after the first <nav> element.');
-            }
+            console.log( `Website has valid skip link - ${testWebsites[websiteIndex]}: ${isValidSkipLink}`);
+            return isValidSkipLink;
         });
 
         // await test.step(`Test menus - ${testWebsites[websiteIndex]}`, async () => {
         //     const menusInsideHeader = page.locator('header nav:visible');
         //     await iterateMenus(menusInsideHeader);
         // });
-    }
-});
+    });
+}
