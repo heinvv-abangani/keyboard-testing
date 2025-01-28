@@ -1,0 +1,172 @@
+import { Page } from "@playwright/test";
+
+export async function testSkipLinks( page: Page, websiteUrl: string ) {
+        let isValidSkipLink = false;
+
+        await goToUrl(page,websiteUrl);
+
+        if ( page.url() !== websiteUrl ) {
+            return;
+        }
+
+        await page.keyboard.press('Tab');
+
+        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+
+        if ( isValidSkipLink ) {
+                return true;
+        }
+
+        // Test if page has a modal that can be closed.
+        console.log( 'Step 2: Test modal' );
+        await goToUrl(page,websiteUrl);
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Escape');
+
+        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+
+        if ( isValidSkipLink ) {
+                return true;
+        }
+
+        // Test if second focusable element is a skip link.
+        console.log( 'Step 3: Test 2nd focusable element' );
+        await goToUrl(page,websiteUrl);
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Tab');
+
+        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+
+        if ( isValidSkipLink ) {
+                return true;
+        }
+
+        // Test if third focusable element is a skip link.
+        console.log( 'Step 4: Test 3rd focusable element' );
+        await goToUrl(page,websiteUrl);
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Tab');
+
+        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+
+        if ( isValidSkipLink ) {
+                return true;
+        }
+
+        return isValidSkipLink;
+}
+
+async function goToUrl( page: Page, url: string ) {
+    await page.route('**/*', (route, request) => {
+        // Block image and font requests
+        if (request.resourceType() === 'image' || request.resourceType() === 'font') {
+            route.abort(); // Abort these requests
+        } else {
+            route.continue(); // Continue with other requests
+        }
+    });
+
+    await page.goto(url, { timeout: 120000, waitUntil: 'load' });
+}
+
+async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: boolean ) {
+        let isNewBrowserOpened = false;
+
+        page.context().on('page', async (newPage) => {
+                console.log('A new tab was opened. Closing it.');
+                await newPage.close(); // Immediately close the new tab
+                isNewBrowserOpened = true;
+        });
+
+        const href = await page.evaluate(() => {
+            return document.activeElement?.getAttribute('href') || '';
+        });
+
+        console.log( 'href', href );
+
+        const hrefContainsAnchorLink = await hasHrefAnchorLink( href );
+
+        console.log( 'href contains anchorlink:', hrefContainsAnchorLink );
+
+        await makeMainLandmarkFocusable( page, href );
+
+        await page.keyboard.press('Enter');
+
+        if ( isNewBrowserOpened ) {
+                return false;
+        }
+
+        try {
+            if ( !! href ) {
+                const isFocusOnAnchorTarget = await page.evaluate((href) => {
+                        if (!href || !href.includes('#')) return false;
+
+                        const anchorId = href.split('#')[1];
+
+                        if (!anchorId) return false;
+
+                        const activeElement = document.activeElement;
+                        return ( activeElement && activeElement.id === anchorId ) ? true : activeElement?.id ;
+                }, href);
+                
+                if (isFocusOnAnchorTarget) {
+                    isValidSkipLink = true;
+                    console.log( isFocusOnAnchorTarget);
+                    console.log('The focus moved to the element referred to by the anchor link.');
+                } else {
+                    console.log('The focus did not move to the element referred to by the anchor link.');
+                    isValidSkipLink = false;
+                }
+            }
+        } catch {
+            console.log( 'Page context got lost when clicking on the skip link' );
+            isValidSkipLink = false;
+            return false;
+        }
+
+        const currentUrl = page.url();
+        const targetUrl = websiteUrl.replace(/\/$/, '') // Remove the trailing slash if present
+            .replace(/[#?].*$/, '');
+
+        if (currentUrl.includes(targetUrl)) {
+            console.log('We are still on the same page.');
+        } else {
+            isValidSkipLink = false;
+            console.log('The page URL has changed.');
+        }
+
+        const focusedElementTag = await page.evaluate(() => document.activeElement?.tagName?.toLowerCase());
+
+        if (focusedElementTag === 'main' ) {
+            console.log( 'Focus is on <main>');
+            console.log( `Website has valid skip link - ${ websiteUrl}: ${isValidSkipLink}`);
+            isValidSkipLink = true;
+            return isValidSkipLink;
+        }
+
+        console.log( `Website has valid skip link - ${ websiteUrl}: ${isValidSkipLink}`);
+        return isValidSkipLink;
+}
+
+async function makeMainLandmarkFocusable( page: Page, href: string ) {
+    await page.evaluate(() => {
+        document.querySelector('main')?.setAttribute( 'tabindex', '0' );
+    });
+
+    if ( await hasHrefAnchorLink( href ) ) {
+        const anchorLink = `#${href.split('#').pop()}`;
+
+        await page.evaluate((selector) => {
+            const element = document.querySelector(selector);
+
+            if (element) {
+                (element as HTMLElement).setAttribute( 'tabindex', '0' );
+            }
+        }, anchorLink);
+    }
+}
+
+async function hasHrefAnchorLink( href: string ) {
+    return href?.includes('#') && '#' !== href;
+}
