@@ -1,3 +1,5 @@
+import { Page } from '@playwright/test';
+
 export async function isElementTrulyVisible(element) {
     // Check if the element is attached to the DOM
     if (!element) return false;
@@ -33,4 +35,17 @@ export async function isElementTrulyVisible(element) {
 
     // If all checks pass, the element is truly visible
     return true;
+}
+
+export async function goToUrl( page: Page, url: string ) {
+    await page.route('**/*', (route, request) => {
+        // Block image and font requests
+        if (request.resourceType() === 'image' || request.resourceType() === 'font') {
+            route.abort(); // Abort these requests
+        } else {
+            route.continue(); // Continue with other requests
+        }
+    });
+
+    await page.goto(url, { timeout: 120000, waitUntil: 'load' });
 }

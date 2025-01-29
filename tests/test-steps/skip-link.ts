@@ -1,73 +1,63 @@
-import { Page } from "@playwright/test";
+import { test, Page } from "@playwright/test";
+import { goToUrl } from "../helpers/general";
 
-export async function testSkipLinks( page: Page, websiteUrl: string ) {
-        let isValidSkipLink = false;
+export async function testSkipLinks(page: Page, websiteUrl: string) {
+        await test.step(`Visit website and validate skip link - ${websiteUrl}`, async () => {
+                let isValidSkipLink = false;
 
-        await goToUrl(page,websiteUrl);
-
-        if ( page.url() !== websiteUrl ) {
-            return;
-        }
-
-        await page.keyboard.press('Tab');
-
-        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
-
-        if ( isValidSkipLink ) {
-                return true;
-        }
-
-        // Test if page has a modal that can be closed.
-        console.log( 'Step 2: Test modal' );
-        await goToUrl(page,websiteUrl);
-        await page.keyboard.press('Tab');
-        await page.keyboard.press('Escape');
-
-        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
-
-        if ( isValidSkipLink ) {
-                return true;
-        }
-
-        // Test if second focusable element is a skip link.
-        console.log( 'Step 3: Test 2nd focusable element' );
-        await goToUrl(page,websiteUrl);
-        await page.keyboard.press('Tab');
-        await page.keyboard.press('Tab');
-
-        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
-
-        if ( isValidSkipLink ) {
-                return true;
-        }
-
-        // Test if third focusable element is a skip link.
-        console.log( 'Step 4: Test 3rd focusable element' );
-        await goToUrl(page,websiteUrl);
-        await page.keyboard.press('Tab');
-        await page.keyboard.press('Tab');
-        await page.keyboard.press('Tab');
-
-        isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
-
-        if ( isValidSkipLink ) {
-                return true;
-        }
-
-        return isValidSkipLink;
-}
-
-async function goToUrl( page: Page, url: string ) {
-    await page.route('**/*', (route, request) => {
-        // Block image and font requests
-        if (request.resourceType() === 'image' || request.resourceType() === 'font') {
-            route.abort(); // Abort these requests
-        } else {
-            route.continue(); // Continue with other requests
-        }
-    });
-
-    await page.goto(url, { timeout: 120000, waitUntil: 'load' });
+                await goToUrl(page,websiteUrl);
+        
+                if ( page.url() !== websiteUrl ) {
+                    return;
+                }
+        
+                await page.keyboard.press('Tab');
+        
+                isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+        
+                if ( isValidSkipLink ) {
+                        return true;
+                }
+        
+                // Test if page has a modal that can be closed.
+                console.log( 'Step 2: Test modal' );
+                await goToUrl(page,websiteUrl);
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Escape');
+        
+                isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+        
+                if ( isValidSkipLink ) {
+                        return true;
+                }
+        
+                // Test if second focusable element is a skip link.
+                console.log( 'Step 3: Test 2nd focusable element' );
+                await goToUrl(page,websiteUrl);
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Tab');
+        
+                isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+        
+                if ( isValidSkipLink ) {
+                        return true;
+                }
+        
+                // Test if third focusable element is a skip link.
+                console.log( 'Step 4: Test 3rd focusable element' );
+                await goToUrl(page,websiteUrl);
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Tab');
+        
+                isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
+        
+                if ( isValidSkipLink ) {
+                        return true;
+                }
+        
+                return isValidSkipLink;
+        });
 }
 
 async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: boolean ) {
