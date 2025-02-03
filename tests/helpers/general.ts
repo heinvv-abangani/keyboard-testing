@@ -5,7 +5,9 @@ export async function isElementTrulyVisible(element) {
     if (!element) return false;
 
     // Retrieve the element's bounding box
-    const box = await element.boundingBox();
+    const locatorElement = await element.elementHandle();
+    const box = await locatorElement.boundingBox();
+
     if (!box || box.width === 0 || box.height === 0) return false;
 
     // Check if the element is within the viewport

@@ -5,3 +5,7 @@ node_modules/
 /playwright/.cache/
 
 .DS_Store
+
+focused-element.png
+
+unfocused-element.png
