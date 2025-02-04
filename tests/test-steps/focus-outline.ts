@@ -34,12 +34,25 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
                         const locator = page.locator(`.a-focusable-${count}`);
                         if (await locator.count() === 0) break;
 
+                        // Get the first matching element
+                        const element = locator.first();
+
+                        if (await element.isVisible()) {
+                                await element.scrollIntoViewIfNeeded();
+                        } else {
+                                continue;
+                        }
+
+                        if ( ! await isElementTrulyVisible( locator ) ) {
+                                continue;
+                        }
+
                         await locator.first().focus();
                         await page.waitForTimeout(500);
 
                         focusableElementCount++;
 
-                        const hasOutline = await locator.evaluate((el: Element) => {
+                        const hasOutline = await locator.first().evaluate((el: Element) => {
                                 const style = window.getComputedStyle(el);
 
                                 return style.outlineStyle !== 'none';

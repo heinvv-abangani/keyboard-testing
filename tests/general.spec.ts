@@ -4,17 +4,17 @@ import { testSkipLinks } from './test-steps/skip-link.ts';
 import { testFocusOutline } from './test-steps/focus-outline.ts';
 
 const testWebsites = [
-    // 'https://academy.bricksbuilder.io/article/menu-builder/',
+    'https://academy.bricksbuilder.io/article/menu-builder/',
     'https://labelvier.nl/',
-    // 'https://spankrachtontwerpers.nl',
-    // 'https://ghost.org/',
-    // 'https://www.framer.com/',
-    // 'https://webflow.com/',
-    // 'https://elementor.com/',
-    // 'https://www.elegantthemes.com/',
-    // 'https://www.d-tec.eu/',
-    // 'https://stuurlui.nl/',
-    // 'https://gravity.nl/'
+    'https://spankrachtontwerpers.nl',
+    'https://ghost.org/',
+    'https://www.framer.com/',
+    'https://webflow.com/',
+    'https://elementor.com/',
+    'https://www.elegantthemes.com/',
+    'https://www.d-tec.eu/',
+    'https://stuurlui.nl/',
+    'https://gravity.nl/'
 ];
 
 for (let websiteIndex = 0; websiteIndex < testWebsites.length; websiteIndex++) {
