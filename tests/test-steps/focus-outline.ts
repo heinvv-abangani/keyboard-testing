@@ -34,16 +34,39 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
                         const locator = page.locator(`.a-focusable-${count}`);
                         if (await locator.count() === 0) break;
 
-                        // Get the first matching element
                         const element = locator.first();
 
-                        if (await element.isVisible()) {
-                                await element.scrollIntoViewIfNeeded();
-                        } else {
+                        try {
+                                await Promise.race([
+                                    (async () => {
+                                        const box = await element.boundingBox();
+                                        if (!box) throw new Error("No bounding box");
+                            
+                                        await element.scrollIntoViewIfNeeded();
+                                    })(),
+                                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 500))
+                                ]);
+                            } catch (error) {
+                                focusedElementIsInvisible++;
+                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
+                             
                                 continue;
-                        }
+                            }
+                            
+                            if (!await isElementTrulyVisible(element)) {
+                                focusedElementIsInvisible++;
+                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
+                             
+                                continue;
+                            }
+                        
+                        const box = await element.boundingBox();
+                        if (!box) continue;
 
-                        if ( ! await isElementTrulyVisible( locator ) ) {
+                        await element.scrollIntoViewIfNeeded();
+
+                        // Now check if it's truly visible with your function
+                        if (!await isElementTrulyVisible(element)) {
                                 continue;
                         }
 
@@ -129,5 +152,6 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
                 console.log( 'focusable elements', focusableElementCount );
                 console.log( 'visible focus outline count', visibleOutlineCount );
                 console.log( 'alternative focus style count', alternativeFocusStyle );
+                console.log( 'not visible', focusedElementIsInvisible );
         });
 }
