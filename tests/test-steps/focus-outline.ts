@@ -13,8 +13,10 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
                 let alternativeFocusStyle = 0;
                 let focusedElementIsInvisible = 0;
                 let focusedElementIsDifferentWidth = 0;
+                let focusedElementHasNoOutline = 0;
+                let focusedElementsWithoutFocusOulineInARow = 0;
 
-                await page.evaluate(() => {
+                const loopCount = await page.evaluate(() => {
                         const focusableElements = document.querySelectorAll(
                                 'a[href], button, input:not([type="hidden"]):not([disabled]), textarea, select, details, [tabindex]:not([tabindex="-1"])'
                         );
@@ -28,11 +30,14 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
 
                 let count = -1;
 
-                while (true) {
+                let numberVisibleFocusInARow = 0;
+
+                while (true && numberVisibleFocusInARow < 10 && focusedElementsWithoutFocusOulineInARow < 5) {
                         count++;
 
                         const locator = page.locator(`.a-focusable-${count}`);
-                        if (await locator.count() === 0) break;
+
+                        if ( loopCount === count ) break;
 
                         const element = locator.first();
 
@@ -46,27 +51,14 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
                                     })(),
                                     new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 500))
                                 ]);
-                            } catch (error) {
-                                focusedElementIsInvisible++;
-                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
-                             
+                        } catch (error) {
+                                numberVisibleFocusInARow = 0;
                                 continue;
-                            }
+                        }
                             
-                            if (!await isElementTrulyVisible(element)) {
-                                focusedElementIsInvisible++;
-                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
-                             
-                                continue;
-                            }
-                        
-                        const box = await element.boundingBox();
-                        if (!box) continue;
-
-                        await element.scrollIntoViewIfNeeded();
-
-                        // Now check if it's truly visible with your function
                         if (!await isElementTrulyVisible(element)) {
+                                focusedElementIsInvisible++;
+                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element?.textContent) || '');
                                 continue;
                         }
 
@@ -75,18 +67,44 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
 
                         focusableElementCount++;
 
-                        const hasOutline = await locator.first().evaluate((el: Element) => {
-                                const style = window.getComputedStyle(el);
+                        const TIMEOUT = 1000;
 
-                                return style.outlineStyle !== 'none';
-                        });
+                        let hasOutline = false;
+                        let timeoutError = false;
+
+                        try {
+                            hasOutline = await Promise.race([
+                                locator.first().evaluate((el: Element) => {
+                                    const style = window.getComputedStyle(el);
+                                    return style.outlineStyle !== 'none';
+                                }),
+                                new Promise<boolean>((_, reject) => 
+                                    setTimeout(() => reject(new Error('Timeout: evaluation took too long')), TIMEOUT)
+                                )
+                            ]);
+                        
+                            console.log('Has outline:', hasOutline);
+                        } catch (error) {
+                                console.log('Error:', error);
+                                numberVisibleFocusInARow = 0;
+                                timeoutError = true;
+                        }
+
+                        if ( timeoutError ) {
+                                console.log( 'error', timeoutError );
+                                console.log( 'has outline', hasOutline );
+                                continue;
+                        }
 
                         if ( hasOutline ) {
                                 visibleOutlineCount++;
+                                numberVisibleFocusInARow++;
+                                focusedElementsWithoutFocusOulineInARow = 0;
                                 continue;
                         }
 
                         console.log( 'hasOutline', hasOutline );
+                        console.log( 'timeout error', timeoutError );
 
                         if ( await isElementTrulyVisible( locator ) ) {
                                 console.log( 'element is visible' );
@@ -100,8 +118,7 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
 
                                 if ( ! await isElementTrulyVisible( resetLocator ) ) {
                                         focusedElementIsInvisible++;
-                                        console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
-                             
+                                        console.log( 'not alternative text', await locator.evaluate( ( element ) => element?.textContent) || '');
                                         continue;
                                 }
 
@@ -112,8 +129,7 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
 
                                 if (img1.width !== img2.width || img1.height !== img2.height) {
                                         focusedElementIsDifferentWidth++;
-                                        console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
-                             
+                                        console.log( 'not alternative text', await locator.evaluate( ( element ) => element?.textContent) || '');
                                         continue;
                                 }
                             
@@ -134,24 +150,31 @@ export async function testFocusOutline(page: Page, websiteUrl: string) {
                                 if (diffPercentage > 5) {
                                         console.log('Significant difference detected!');
                                         alternativeFocusStyle++;
+                                        numberVisibleFocusInARow++;
+                                        focusedElementsWithoutFocusOulineInARow = 0;
                                         console.log( 'screenshots different' );
-                                        console.log( 'alternative text', await locator.evaluate( ( element ) => element.textContent ) );
+                                        console.log( 'alternative text', await locator.evaluate( ( element ) => element?.textContent ) );
                                 } else {
-                                        console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
-                             
-                                    console.log('No significant visual difference.');
+                                        console.log( 'not alternative text', await locator.evaluate( ( element ) => element?.textContent) || '');
+                                        numberVisibleFocusInARow = 0;
+                                        focusedElementHasNoOutline++;
+                                        focusedElementsWithoutFocusOulineInARow++;
+                                        console.log('No significant visual difference.');
                                 }
                         } else {
-                                focusedElementIsInvisible++;
-                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element.outerHTML ) );
-                             
+                                focusedElementsWithoutFocusOulineInARow++;
+                                focusedElementHasNoOutline++;
+                                console.log( 'not alternative text', await locator.evaluate( ( element ) => element?.textContent) || '');
                                 console.log( 'element invisible' );
                         }
                 }
 
+                console.log( 'number of visible focus in a row', numberVisibleFocusInARow );
                 console.log( 'focusable elements', focusableElementCount );
                 console.log( 'visible focus outline count', visibleOutlineCount );
                 console.log( 'alternative focus style count', alternativeFocusStyle );
                 console.log( 'not visible', focusedElementIsInvisible );
+                console.log( 'not visible focus', focusedElementHasNoOutline);
+                console.log( 'focusedElementsWithoutFocusOulineInARow', focusedElementsWithoutFocusOulineInARow);
         });
 }

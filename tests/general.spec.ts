@@ -14,7 +14,8 @@ const testWebsites = [
     'https://www.elegantthemes.com/',
     'https://www.d-tec.eu/',
     'https://stuurlui.nl/',
-    'https://gravity.nl/'
+    'https://gravity.nl/',
+    'https://census.nl',
 ];
 
 for (let websiteIndex = 0; websiteIndex < testWebsites.length; websiteIndex++) {
