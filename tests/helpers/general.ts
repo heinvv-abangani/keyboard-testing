@@ -1,42 +1,27 @@
 import { Page } from '@playwright/test';
 
 export async function isElementTrulyVisible(element) {
-    // Check if the element is attached to the DOM
     if (!element) return false;
 
-    // Retrieve the element's bounding box
     const locatorElement = await element.elementHandle();
-    const box = await locatorElement.boundingBox();
+    if (!locatorElement) return false;
 
+    const box = await locatorElement.boundingBox();
     if (!box || box.width === 0 || box.height === 0) return false;
 
-    // Check if the element is within the viewport
-    const viewport = await element.page().viewportSize();
-    if (!viewport) return false;
-    const isInViewport = box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height;
-    if (!isInViewport) return false;
-
-    // Evaluate computed styles to check for visibility constraints
-    const isHiddenByCSS = await element.evaluate((el) => {
-        let currentElement = el;
-        while (currentElement) {
-            const style = window.getComputedStyle(currentElement);
-            if (
-                style.display === 'none' ||
-                style.visibility === 'hidden' ||
-                parseFloat(style.opacity) === 0 ||
-                parseFloat(style.maxHeight) === 0
-            ) {
+    const isHiddenByCSS = await locatorElement.evaluate((el) => {
+        let current = el;
+        while (current) {
+            const style = window.getComputedStyle(current);
+            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
                 return true;
             }
-            currentElement = currentElement.parentElement;
+            current = current.parentElement;
         }
         return false;
     });
-    if (isHiddenByCSS) return false;
 
-    // If all checks pass, the element is truly visible
-    return true;
+    return !isHiddenByCSS;
 }
 
 export async function goToUrl( page: Page, url: string ) {
