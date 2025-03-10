@@ -6,8 +6,11 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
                 let isValidSkipLink = false;
 
                 await goToUrl(page,websiteUrl);
+
+                console.log( 'test', websiteUrl);
         
                 if ( page.url() !== websiteUrl ) {
+                    console.log( 'has skiplink ' + websiteUrl, isValidSkipLink);
                     return;
                 }
         
@@ -16,11 +19,12 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
                 isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
         
                 if ( isValidSkipLink ) {
+                        console.log( 'has skiplink ' + websiteUrl, true);
                         return true;
                 }
         
                 // Test if page has a modal that can be closed.
-                console.log( 'Step 2: Test modal' );
+                // console.log( 'Step 2: Test modal' );
                 await goToUrl(page,websiteUrl);
                 await page.keyboard.press('Tab');
                 await page.keyboard.press('Escape');
@@ -28,11 +32,12 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
                 isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
         
                 if ( isValidSkipLink ) {
+                        console.log( 'has skiplink ' + websiteUrl, true);
                         return true;
                 }
         
                 // Test if second focusable element is a skip link.
-                console.log( 'Step 3: Test 2nd focusable element' );
+                // console.log( 'Step 3: Test 2nd focusable element' );
                 await goToUrl(page,websiteUrl);
                 await page.keyboard.press('Tab');
                 await page.keyboard.press('Tab');
@@ -40,11 +45,12 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
                 isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
         
                 if ( isValidSkipLink ) {
+                        console.log( 'has skiplink ' + websiteUrl, true);
                         return true;
                 }
         
                 // Test if third focusable element is a skip link.
-                console.log( 'Step 4: Test 3rd focusable element' );
+                // console.log( 'Step 4: Test 3rd focusable element' );
                 await goToUrl(page,websiteUrl);
                 await page.keyboard.press('Tab');
                 await page.keyboard.press('Tab');
@@ -53,6 +59,7 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
                 isValidSkipLink = await isLinkSkipLink( page, websiteUrl, isValidSkipLink );
         
                 if ( isValidSkipLink ) {
+                        console.log( 'has skiplink ' + websiteUrl, true);
                         return true;
                 }
         
@@ -64,7 +71,7 @@ async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: 
         let isNewBrowserOpened = false;
 
         page.context().on('page', async (newPage) => {
-                console.log('A new tab was opened. Closing it.');
+                // console.log('A new tab was opened. Closing it.');
                 await newPage.close(); // Immediately close the new tab
                 isNewBrowserOpened = true;
         });
@@ -73,11 +80,11 @@ async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: 
             return document.activeElement?.getAttribute('href') || '';
         });
 
-        console.log( 'href', href );
+        // console.log( 'href', href );
 
         const hrefContainsAnchorLink = await hasHrefAnchorLink( href );
 
-        console.log( 'href contains anchorlink:', hrefContainsAnchorLink );
+        // console.log( 'href contains anchorlink:', hrefContainsAnchorLink );
 
         await makeMainLandmarkFocusable( page, href );
 
@@ -102,15 +109,15 @@ async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: 
                 
                 if (isFocusOnAnchorTarget) {
                     isValidSkipLink = true;
-                    console.log( isFocusOnAnchorTarget);
-                    console.log('The focus moved to the element referred to by the anchor link.');
+                    // console.log( isFocusOnAnchorTarget);
+                    // console.log('The focus moved to the element referred to by the anchor link.');
                 } else {
-                    console.log('The focus did not move to the element referred to by the anchor link.');
+                    // console.log('The focus did not move to the element referred to by the anchor link.');
                     isValidSkipLink = false;
                 }
             }
         } catch {
-            console.log( 'Page context got lost when clicking on the skip link' );
+            // console.log( 'Page context got lost when clicking on the skip link' );
             isValidSkipLink = false;
             return false;
         }
@@ -120,17 +127,19 @@ async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: 
             .replace(/[#?].*$/, '');
 
         if (currentUrl.includes(targetUrl)) {
-            console.log('We are still on the same page.');
+            // console.log('We are still on the same page.');
         } else {
             isValidSkipLink = false;
-            console.log('The page URL has changed.');
+            // console.log('The page URL has changed.');
         }
 
         const focusedElementTag = await page.evaluate(() => document.activeElement?.tagName?.toLowerCase());
 
+        await page.pause();
+
         if (focusedElementTag === 'main' ) {
-            console.log( 'Focus is on <main>');
-            console.log( `Website has valid skip link - ${ websiteUrl}: ${isValidSkipLink}`);
+            // console.log( 'Focus is on <main>');
+            console.log( `Website has valid skip link on 'main'- ${ websiteUrl}: ${isValidSkipLink}`);
             isValidSkipLink = true;
             return isValidSkipLink;
         }
