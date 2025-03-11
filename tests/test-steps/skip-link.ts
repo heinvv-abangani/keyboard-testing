@@ -9,10 +9,12 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
 
                 console.log( 'test', websiteUrl);
         
-                if ( page.url() !== websiteUrl ) {
-                    console.log( 'has skiplink ' + websiteUrl, isValidSkipLink);
-                    return;
-                }
+                // if ( page.url() !== websiteUrl ) {
+                //     console.log( page.url() )
+                //     console.log( websiteUrl );
+                //     console.log( 'has skiplink ' + websiteUrl, isValidSkipLink);
+                //     // return;
+                // }
         
                 await page.keyboard.press('Tab');
         
@@ -63,6 +65,7 @@ export async function testSkipLinks(page: Page, websiteUrl: string) {
                         return true;
                 }
         
+                console.log( 'has skiplink ' + websiteUrl, isValidSkipLink);
                 return isValidSkipLink;
         });
 }
@@ -133,10 +136,15 @@ async function isLinkSkipLink( page: Page, websiteUrl: string, isValidSkipLink: 
             // console.log('The page URL has changed.');
         }
 
-        const focusedElementTag = await page.evaluate(() => document.activeElement?.tagName?.toLowerCase());
+        let focusedElementTag: string | undefined = '';
 
-        await page.pause();
-
+        if (!page.isClosed()) {
+            try {
+                focusedElementTag = await page.evaluate(() => document.activeElement?.tagName?.toLowerCase());
+            } catch (error) {
+                console.log("Skipping evaluation due to navigation:", error.message);
+            }
+        }
         if (focusedElementTag === 'main' ) {
             // console.log( 'Focus is on <main>');
             console.log( `Website has valid skip link on 'main'- ${ websiteUrl}: ${isValidSkipLink}`);
