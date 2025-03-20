@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { iterateMenus, iterateMenuItems } from './helpers/menu.ts';
+import { testMenus } from './helpers/menu.ts';
 import { testSkipLinks } from './test-steps/skip-link.ts';
 import { testFocusOutline } from './test-steps/focus-outline.ts';
 
 const testWebsites = [
-    // 'https://academy.bricksbuilder.io/article/menu-builder/',
+    'https://academy.bricksbuilder.io/article/menu-builder/',
     // 'https://labelvier.nl/',
     // 'https://spankrachtontwerpers.nl',
     // 'https://ghost.org/',
@@ -28,8 +28,10 @@ for (let websiteIndex = 0; websiteIndex < testWebsites.length; websiteIndex++) {
 
         const websiteUrl = testWebsites[websiteIndex];
 
-        await testSkipLinks(page, websiteUrl);
+        // await testSkipLinks(page, websiteUrl);
 
         // await testFocusOutline(page, websiteUrl);
+
+        await testMenus(page, websiteUrl);
     });
 }
