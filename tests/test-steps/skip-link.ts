@@ -1,5 +1,5 @@
 import { test, Page } from "@playwright/test";
-import { goToUrl } from "../helpers/general";
+import { goToUrl, detectAndClosePopup } from "../helpers/general";
 
 export async function testSkipLinks(page: Page, websiteUrl: string) {
         await test.step(`Visit website and validate skip link - ${websiteUrl}`, async () => {

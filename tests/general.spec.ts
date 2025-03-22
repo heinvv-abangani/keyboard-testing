@@ -1,10 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 import { testMenus } from './helpers/menu.ts';
 import { testSkipLinks } from './test-steps/skip-link.ts';
 import { testFocusOutline } from './test-steps/focus-outline.ts';
 
 const testWebsites = [
-    'https://academy.bricksbuilder.io/article/menu-builder/',
+    // 'https://academy.bricksbuilder.io/article/menu-builder/',
     // 'https://labelvier.nl/',
     // 'https://spankrachtontwerpers.nl',
     // 'https://ghost.org/',
@@ -17,7 +17,7 @@ const testWebsites = [
     // 'https://gravity.nl/',
     // 'https://census.nl',
     // 'https://afrikatikkun.org/',
-    // 'https://daveden.co.uk/',
+    'https://daveden.co.uk/',
     // 'https://equalizedigital.com/',
     // 'https://getplate.com',
 ];
