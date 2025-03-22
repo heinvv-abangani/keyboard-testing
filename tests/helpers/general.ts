@@ -33,13 +33,39 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 parseFloat(style.opacity) === 0) {
                 return true;
             }
-            
             // Check for transform that might hide the element
-            if (style.transform &&
-                (style.transform.includes('scale(0)') ||
-                 style.transform.includes('scale(0,') ||
-                 style.transform.includes('scale(0 '))) {
-                return true;
+            if (style.transform) {
+                // Check for scale(0) which makes element invisible
+                if (style.transform.includes('scale(0)') ||
+                    style.transform.includes('scale(0,') ||
+                    style.transform.includes('scale(0 ')) {
+                    return true;
+                }
+                
+                // Check for translateX(-100%) or similar transforms that move element off-screen
+                if (style.transform.includes('translateX(-100%)') ||
+                    style.transform.includes('translateY(-100%)') ||
+                    style.transform.includes('translate(-100%') ||
+                    (style.transform.includes('matrix') &&
+                     (style.transform.includes('-1, 0') || style.transform.includes('0, -1')))) {
+                    console.log(`Element or parent has transform: ${style.transform} that hides it`);
+                    return true;
+                }
+            }
+            
+            // Check if element is in a menu that's hidden by transform
+            if (current.classList.contains('main-menu') ||
+                current.classList.contains('nav') ||
+                current.closest('.main-menu') ||
+                current.closest('.nav')) {
+                // This is a menu or menu item, check if it's hidden by transform
+                if (style.transform &&
+                    (style.transform.includes('translateX(-100%)') ||
+                     style.transform.includes('translateY(-100%)') ||
+                     style.transform.includes('translate(-100%'))) {
+                    console.log(`Menu element has transform: ${style.transform} that hides it`);
+                    return true;
+                }
             }
             
             // Check for clip/clip-path that might hide the element

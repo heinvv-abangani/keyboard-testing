@@ -15,9 +15,9 @@ const testWebsites = [
     // 'https://www.d-tec.eu/',
     // 'https://stuurlui.nl/',
     // 'https://gravity.nl/',
-    // 'https://census.nl',
+    'https://census.nl',
     // 'https://afrikatikkun.org/',
-    'https://daveden.co.uk/',
+    // 'https://daveden.co.uk/',
     // 'https://equalizedigital.com/',
     // 'https://getplate.com',
 ];
