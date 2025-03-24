@@ -6,6 +6,15 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
     const locatorElement = await element.elementHandle();
     if (!locatorElement) return false;
     
+    // Check if this is a controlled element (via aria-controls) that might be toggled
+    const isControlledElement = await locatorElement.evaluate(el => {
+        return el.id && document.querySelector(`[aria-controls="${el.id}"]`) !== null;
+    });
+    
+    if (isControlledElement && debugElement) {
+        console.log(`Element is controlled via aria-controls, may be toggled by user interaction`);
+    }
+    
     // First check if this is the footer navigation, which the user has confirmed is visible
     const isFooterNav = await locatorElement.evaluate(el => {
         return el.closest('.footer-top .nav') !== null ||

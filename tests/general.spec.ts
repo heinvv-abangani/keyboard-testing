@@ -2,6 +2,7 @@ import { test } from '@playwright/test';
 import { testMenus } from './helpers/menu.ts';
 import { testSkipLinks } from './test-steps/skip-link.ts';
 import { testFocusOutline } from './test-steps/focus-outline.ts';
+import { testMenuScreenReaderAccessibility } from './screen-reader-test.ts';
 
 const testWebsites = [
     // 'https://academy.bricksbuilder.io/article/menu-builder/',
@@ -34,4 +35,10 @@ for (let websiteIndex = 0; websiteIndex < testWebsites.length; websiteIndex++) {
 
         await testMenus(page, websiteUrl);
     });
+    
+    // test(`screen reader accessibility - ${testWebsites[websiteIndex]}`, async ({ page }) => {
+    //     test.setTimeout(150_000);
+    //     const websiteUrl = testWebsites[websiteIndex];
+    //     await testMenuScreenReaderAccessibility(page, websiteUrl);
+    // });
 }

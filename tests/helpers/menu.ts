@@ -17,6 +17,36 @@ export async function testMenus(page: Page, websiteUrl: string) {
         // Check visibility of menu items on both desktop and mobile
         const { combinedResults, updatedMenuDetails } = await checkCombinedVisibility(page, menuDetails);
         
+        // First, identify which menus are controlled by other menus
+        const controlledMenuMap = new Map();
+        
+        for (let i = 0; i < updatedMenuDetails.length; i++) {
+            const menu = updatedMenuDetails[i];
+            if (!menu) continue;
+            
+            // If this menu has controlledMenuIds, mark those menus as controlled
+            if (menu.controlledMenuIds && menu.controlledMenuIds.length > 0) {
+                for (const controlledId of menu.controlledMenuIds) {
+                    // Find the menu with this ID
+                    for (let j = 0; j < updatedMenuDetails.length; j++) {
+                        const potentialControlledMenu = updatedMenuDetails[j];
+                        if (!potentialControlledMenu) continue;
+                        
+                        // Check if this menu's name/ID matches the controlled ID
+                        if (potentialControlledMenu.name &&
+                            (potentialControlledMenu.name.includes(controlledId) ||
+                             potentialControlledMenu.name.includes(`#${controlledId}`))) {
+                            controlledMenuMap.set(j, {
+                                controlledBy: i,
+                                controlledById: controlledId
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
         // Print detailed report for each menu
         console.log('\n=== MENU-LEVEL ACCESSIBILITY REPORT ===');
         for (let i = 0; i < updatedMenuDetails.length; i++) {
@@ -24,6 +54,13 @@ export async function testMenus(page: Page, websiteUrl: string) {
             if (!menu) continue; // Skip if menu was not tested (e.g., not visible)
             
             console.log(`\n## Menu ${i + 1} ${menu.name ? `(${menu.name})` : ''}`);
+            
+            // Check if this menu is controlled by another menu
+            const controlInfo = controlledMenuMap.get(i);
+            if (controlInfo) {
+                const controllerMenu = updatedMenuDetails[controlInfo.controlledBy];
+                console.log(`- This is a dropdown menu controlled by Menu ${controlInfo.controlledBy + 1}${controllerMenu.name ? ` (${controllerMenu.name})` : ''} via aria-controls="${controlInfo.controlledById}"`);
+            }
             
             // Visibility status
             if (menu.isVisible && menu.isVisibleOnMobile) {
@@ -34,8 +71,17 @@ export async function testMenus(page: Page, websiteUrl: string) {
                 console.log(`- Visibility: Visible on mobile only`);
             } else {
                 console.log(`- Visibility: Not visible on desktop or mobile`);
-                console.log(`- Status: Skipped (not visible)`);
-                continue;
+                
+                if (controlInfo) {
+                    console.log(`- Status: Hidden dropdown menu (becomes visible when activated)`);
+                } else {
+                    console.log(`- Status: Skipped (not visible)`);
+                }
+                
+                // If this is a controlled menu, don't skip it completely
+                if (!controlInfo) {
+                    continue;
+                }
             }
             
             // Item visibility across devices
@@ -147,7 +193,7 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
     // Create a deep copy of menuDetails to update
     const updatedMenuDetails = JSON.parse(JSON.stringify(menuDetails));
     
-    // Check if we're testing daveden.co.uk or spankrachtontwerpers.nl
+    // Check if we're testing specific websites that need special handling
     const isDaveden = await page.evaluate(() => {
         return window.location.hostname.includes('daveden.co.uk');
     });
@@ -157,10 +203,16 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
                window.location.hostname.includes('spankrachtdevelopers.nl');
     });
     
+    const isWebflow = await page.evaluate(() => {
+        return window.location.hostname.includes('webflow.com');
+    });
+    
     if (isDaveden) {
         console.log(`Detected daveden.co.uk - using specialized approach for mobile menu`);
     } else if (isSpankracht) {
         console.log(`Detected spankrachtontwerpers.nl - checking for footer navigation`);
+    } else if (isWebflow) {
+        console.log(`Detected webflow.com - using specialized approach for aria-controls menus`);
     }
     
     for (let i = 0; i < menuDetails.length; i++) {
@@ -604,11 +656,28 @@ export async function iterateMenus(page: Page, menus: Locator) {
             // Test dropdown functionality with keyboard
             const keyboardAccessible = await testDropdownKeyboardAccessibility(page, menuItem);
             
-            // Check if aria-expanded is used
+            // Check if aria-expanded or aria-controls is used
             const hasAriaExpanded = await menuItem.locator('[aria-expanded]').count() > 0;
-            if (hasAriaExpanded) {
+            const hasAriaControls = await menuItem.locator('[aria-controls]').count() > 0;
+            
+            if (hasAriaExpanded || hasAriaControls) {
                 results.menusWithAriaExpanded++;
                 menuDetails[i].hasAriaExpanded = true;
+                
+                if (hasAriaControls) {
+                    menuDetails[i].notes.push(`Menu uses aria-controls attributes for dropdown menus`);
+                    
+                    // Store the controlled menu IDs
+                    const ariaControlsElements = await menuItem.locator('[aria-controls]').all();
+                    menuDetails[i].controlledMenuIds = [];
+                    
+                    for (const element of ariaControlsElements) {
+                        const controlledId = await element.getAttribute('aria-controls');
+                        if (controlledId) {
+                            menuDetails[i].controlledMenuIds.push(controlledId);
+                        }
+                    }
+                }
             }
             
             if (keyboardAccessible) {
@@ -1110,6 +1179,20 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
 export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Locator) {
     console.log(`\n--- Testing Dropdown Keyboard Accessibility ---`);
     
+    // Check if we're on webflow.com
+    const isWebflow = await page.evaluate(() => {
+        return window.location.hostname.includes('webflow.com');
+    });
+    
+    if (isWebflow) {
+        console.log(`    Detected webflow.com - checking for aria-controls attributes`);
+        const ariaControlsResult = await testAriaControlsDropdowns(page, menuItem);
+        if (ariaControlsResult) {
+            console.log(`    ✅ Found and successfully tested aria-controls dropdown menus on webflow.com`);
+            return true;
+        }
+    }
+    
     // Check if we're testing daveden.co.uk or spankrachtontwerpers.nl
     const isDaveden = await page.evaluate(() => {
         return window.location.hostname.includes('daveden.co.uk');
@@ -1414,13 +1497,87 @@ export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Lo
 export async function testMouseInteractions(page: Page, menuItem: Locator): Promise<boolean> {
     console.log(`\n--- Testing Mouse Interactions ---`);
     
-    // Check if we're testing labelvier.nl
+    // Check if we're testing specific websites
     const isLabelvier = await page.evaluate(() => {
         return window.location.hostname.includes('labelvier.nl');
     });
     
+    const isWebflow = await page.evaluate(() => {
+        return window.location.hostname.includes('webflow.com');
+    });
+    
     if (isLabelvier) {
         console.log(`    Detected labelvier.nl - using specialized testing approach`);
+    }
+    
+    if (isWebflow) {
+        console.log(`    Detected webflow.com - testing aria-controls elements with mouse`);
+        
+        // Find all elements with aria-controls attribute within the menu
+        const elementsWithAriaControls = await menuItem.locator('[aria-controls]');
+        const count = await elementsWithAriaControls.count();
+        
+        if (count > 0) {
+            console.log(`    Found ${count} elements with aria-controls attribute`);
+            let anyDropdownsAccessible = false;
+            
+            for (let i = 0; i < count; i++) {
+                const element = elementsWithAriaControls.nth(i);
+                const ariaControlsValue = await element.getAttribute('aria-controls');
+                const elementText = await element.textContent() || await element.getAttribute('aria-label') || `Element ${i+1}`;
+                
+                console.log(`    Testing mouse click on "${elementText}" with aria-controls="${ariaControlsValue}"`);
+                
+                // Check if the controlled element exists
+                const controlledElementSelector = `#${ariaControlsValue}`;
+                const controlledElement = page.locator(controlledElementSelector);
+                const controlledElementExists = await controlledElement.count() > 0;
+                
+                if (!controlledElementExists) {
+                    console.log(`    ❌ Controlled element #${ariaControlsValue} not found`);
+                    continue;
+                }
+                
+                // Count visible items before click
+                const beforeItems = await countVisibleDropdownItems(page, controlledElement);
+                console.log(`    Visible dropdown items before click: ${beforeItems}`);
+                
+                // Click the element
+                await element.click();
+                console.log(`    Element clicked`);
+                
+                // Wait for any animations
+                await page.waitForTimeout(500);
+                
+                // Count visible items after click
+                const afterItems = await countVisibleDropdownItems(page, controlledElement);
+                console.log(`    Visible dropdown items after click: ${afterItems}`);
+                
+                if (afterItems > beforeItems) {
+                    console.log(`    ✅ Element reveals dropdown menu with mouse click`);
+                    anyDropdownsAccessible = true;
+                    
+                    // Close the dropdown by clicking elsewhere
+                    await page.mouse.click(10, 10);
+                } else {
+                    // Check if the controlled element itself became visible
+                    const isControlledElementVisible = await isElementTrulyVisible(controlledElement, true);
+                    if (isControlledElementVisible) {
+                        console.log(`    ✅ Controlled element is now visible`);
+                        anyDropdownsAccessible = true;
+                        
+                        // Close the dropdown by clicking elsewhere
+                        await page.mouse.click(10, 10);
+                    } else {
+                        console.log(`    ❗ Element does not reveal dropdown menu with mouse click`);
+                    }
+                }
+            }
+            
+            if (anyDropdownsAccessible) {
+                return true;
+            }
+        }
     }
     
     // 1. Test hover interactions on parent items - prioritize menu-item-has-children for labelvier.nl
@@ -1614,6 +1771,119 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         console.log(`    No potential dropdown parent items found`);
         return false;
     }
+}
+
+/**
+ * Test dropdown menus that use aria-controls attributes
+ * This is particularly useful for webflow.com where many menus use aria-controls
+ */
+export async function testAriaControlsDropdowns(page: Page, menuItem: Locator) {
+    console.log(`    Testing for elements with aria-controls attributes`);
+    
+    // Find all elements with aria-controls attribute within the menu
+    const elementsWithAriaControls = await menuItem.locator('[aria-controls]');
+    const count = await elementsWithAriaControls.count();
+    
+    if (count === 0) {
+        console.log(`    No elements with aria-controls found in this menu`);
+        return false;
+    }
+    
+    console.log(`    Found ${count} elements with aria-controls attribute`);
+    let anyDropdownsAccessible = false;
+    
+    for (let i = 0; i < count; i++) {
+        const element = elementsWithAriaControls.nth(i);
+        const ariaControlsValue = await element.getAttribute('aria-controls');
+        const elementText = await element.textContent() || await element.getAttribute('aria-label') || `Element ${i+1}`;
+        
+        console.log(`    Testing element "${elementText}" with aria-controls="${ariaControlsValue}"`);
+        
+        // Check if the controlled element exists
+        const controlledElementSelector = `#${ariaControlsValue}`;
+        const controlledElement = page.locator(controlledElementSelector);
+        const controlledElementExists = await controlledElement.count() > 0;
+        
+        if (!controlledElementExists) {
+            console.log(`    ❌ Controlled element #${ariaControlsValue} not found`);
+            continue;
+        }
+        
+        // Check initial state
+        const initialAriaExpanded = await element.getAttribute('aria-expanded');
+        console.log(`    Initial aria-expanded state: ${initialAriaExpanded}`);
+        
+        // Count visible items before activation
+        const beforeItems = await countVisibleDropdownItems(page, controlledElement);
+        console.log(`    Visible dropdown items before activation: ${beforeItems}`);
+        
+        // Focus the element
+        await element.focus();
+        console.log(`    Element focused`);
+        
+        // Press Enter to activate
+        await page.keyboard.press('Enter');
+        console.log(`    Enter key pressed`);
+        
+        // Wait for any animations
+        await page.waitForTimeout(500);
+        
+        // Check if aria-expanded state changed
+        const newAriaExpanded = await element.getAttribute('aria-expanded');
+        console.log(`    After keyboard activation, aria-expanded state: ${newAriaExpanded}`);
+        
+        // Count visible items after activation
+        const afterItems = await countVisibleDropdownItems(page, controlledElement);
+        console.log(`    Visible dropdown items after activation: ${afterItems}`);
+        
+        if (initialAriaExpanded !== newAriaExpanded) {
+            console.log(`    ✅ Element correctly toggles aria-expanded state with keyboard`);
+            
+            if (afterItems > beforeItems) {
+                console.log(`    ✅ Dropdown menu opens correctly with keyboard`);
+                anyDropdownsAccessible = true;
+            } else {
+                // Even if no new items are visible, check if the controlled element itself became visible
+                const isControlledElementVisible = await isElementTrulyVisible(controlledElement, true);
+                if (isControlledElementVisible) {
+                    console.log(`    ✅ Controlled element is now visible`);
+                    anyDropdownsAccessible = true;
+                } else {
+                    console.log(`    ❗ Dropdown menu doesn't show items despite aria-expanded changing`);
+                }
+            }
+            
+            // Close the dropdown by pressing Escape
+            await page.keyboard.press('Escape');
+        } else {
+            // Even if aria-expanded doesn't change, check if dropdown is visually accessible
+            if (afterItems > beforeItems) {
+                console.log(`    ⚠️ Element opens dropdown with keyboard BUT does not toggle aria-expanded state`);
+                console.log(`    ✅ Dropdown IS functionally accessible with keyboard`);
+                console.log(`    ❌ BUT aria-expanded attribute is not updated (accessibility issue for screen readers)`);
+                
+                anyDropdownsAccessible = true;
+                
+                // Close the dropdown by pressing Escape
+                await page.keyboard.press('Escape');
+            } else {
+                // Check if the controlled element itself became visible
+                const isControlledElementVisible = await isElementTrulyVisible(controlledElement, true);
+                if (isControlledElementVisible) {
+                    console.log(`    ✅ Controlled element is now visible despite no aria-expanded change`);
+                    anyDropdownsAccessible = true;
+                    
+                    // Close the dropdown by pressing Escape
+                    await page.keyboard.press('Escape');
+                } else {
+                    console.log(`    ❗ Element does not toggle aria-expanded state with keyboard`);
+                    console.log(`    ❗ No dropdown items visible after keyboard activation`);
+                }
+            }
+        }
+    }
+    
+    return anyDropdownsAccessible;
 }
 
 /**
