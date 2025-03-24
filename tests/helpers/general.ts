@@ -129,6 +129,143 @@ export async function goToUrl( page: Page, url: string ) {
 }
 
 export async function detectAndClosePopup(page: Page) {
+    // Check if we're on census.nl
+    const isCensus = await page.evaluate(() => {
+        return window.location.hostname.includes('census.nl');
+    });
+
+    if (isCensus) {
+        console.log('Detected census.nl website, checking for specific popups...');
+        try {
+            // Check for census.nl cookie consent popup
+            const censusPopupSelectors = [
+                // Common census.nl popup selectors
+                '#cookie-notice',
+                '.cookie-popup',
+                '.cookie-banner',
+                '.cookie-consent',
+                '.consent-popup',
+                // More specific selectors for census.nl
+                '.census-popup',
+                '.census-cookie-notice',
+                // Generic popup selectors that might apply
+                '.popup-overlay',
+                '.modal-overlay',
+                '.overlay',
+                // Dialog elements
+                'dialog[open]',
+                '[role="dialog"]',
+                // Elements with high z-index
+                '[style*="z-index: 9999"]',
+                '[style*="z-index: 999"]',
+                '[style*="z-index: 99"]'
+            ];
+
+            for (const selector of censusPopupSelectors) {
+                const popup = await page.locator(selector).first();
+                const isVisible = await popup.isVisible().catch(() => false);
+                
+                if (isVisible) {
+                    console.log(`Found census.nl popup: ${selector}`);
+                    
+                    // Try to find and click accept/close buttons
+                    const buttonSelectors = [
+                        'button:has-text("Accept")',
+                        'button:has-text("Accepteren")',
+                        'button:has-text("Agree")',
+                        'button:has-text("OK")',
+                        'button:has-text("Close")',
+                        'button:has-text("Sluiten")',
+                        '.close-button',
+                        '.dismiss-button',
+                        '.accept-button',
+                        'button.accept',
+                        'button.close',
+                        '[aria-label="Close"]',
+                        '[aria-label="Sluiten"]'
+                    ];
+                    
+                    for (const buttonSelector of buttonSelectors) {
+                        const button = await popup.locator(buttonSelector).first();
+                        const buttonVisible = await button.isVisible().catch(() => false);
+                        
+                        if (buttonVisible) {
+                            console.log(`Clicking button: ${buttonSelector}`);
+                            await button.click();
+                            await page.waitForTimeout(1000); // Wait longer for census.nl
+                            return true;
+                        }
+                    }
+                    
+                    // If no specific button found, try clicking the popup itself
+                    console.log('No specific button found, trying to click the popup itself');
+                    await popup.click();
+                    await page.waitForTimeout(1000);
+                    
+                    // Try pressing Escape as a last resort
+                    console.log('Trying Escape key');
+                    await page.keyboard.press('Escape');
+                    await page.waitForTimeout(1000);
+                    
+                    return true;
+                }
+            }
+            
+            // If no popup found with selectors, try a more aggressive approach
+            console.log('No popup found with selectors, trying more aggressive detection');
+            
+            // Look for fixed or absolute positioned elements with high z-index
+            const potentialPopups = await page.evaluate(() => {
+                interface PopupInfo {
+                    tag: string;
+                    id: string;
+                    classes: string;
+                    zIndex: string;
+                    position: string;
+                }
+                
+                const results: PopupInfo[] = [];
+                const elements = document.querySelectorAll('*');
+                
+                for (const el of elements) {
+                    const style = window.getComputedStyle(el);
+                    if (
+                        (style.position === 'fixed' || style.position === 'absolute') &&
+                        style.zIndex !== 'auto' && parseInt(style.zIndex, 10) > 50 &&
+                        el.tagName !== 'HTML' && el.tagName !== 'BODY' &&
+                        style.display !== 'none' && style.visibility !== 'hidden'
+                    ) {
+                        // Get element details for logging
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > 100 && rect.height > 100) {
+                            results.push({
+                                tag: el.tagName.toLowerCase(),
+                                id: el.id,
+                                classes: Array.from(el.classList).join(' '),
+                                zIndex: style.zIndex,
+                                position: style.position
+                            });
+                        }
+                    }
+                }
+                return results;
+            });
+            
+            if (potentialPopups.length > 0) {
+                console.log('Found potential popups on census.nl:', potentialPopups);
+                
+                // Try pressing Escape to close any potential popup
+                console.log('Trying Escape key to close potential popups');
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(1000);
+                
+                return true;
+            }
+        } catch (error) {
+            console.log('Error handling census.nl popup:', error.message);
+        }
+    }
+
     // First, check for common cookie consent popups
     try {
         // Check for labelvier.nl cookie popup specifically
