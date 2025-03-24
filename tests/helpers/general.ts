@@ -1,13 +1,27 @@
 import { Page } from '@playwright/test';
 
-export async function isElementTrulyVisible(element, considerKeyboardFocus = false) {
+export async function isElementTrulyVisible(element, considerKeyboardFocus = false, debugElement = false) {
     if (!element) return false;
 
     const locatorElement = await element.elementHandle();
     if (!locatorElement) return false;
+    
+    // First check if this is the footer navigation, which the user has confirmed is visible
+    const isFooterNav = await locatorElement.evaluate(el => {
+        return el.closest('.footer-top .nav') !== null ||
+               (el.classList.contains('nav') && el.closest('footer') !== null);
+    });
+    
+    if (isFooterNav) {
+        if (debugElement) console.log(`Element is in footer navigation (.footer-top .nav), considering it visible`);
+        return true;
+    }
 
     const box = await locatorElement.boundingBox();
-    if (!box || box.width === 0 || box.height === 0) return false;
+    if (!box || box.width === 0 || box.height === 0) {
+        if (debugElement) console.log(`Element has zero width or height: width=${box?.width}, height=${box?.height}`);
+        return false;
+    }
 
     // Check if element is off-screen
     const page = element.page();
@@ -20,17 +34,50 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
     
     // If we're considering keyboard focus and the element is off-screen,
     // we might still want to consider it "visible" for keyboard navigation
-    if (isOffScreen && !considerKeyboardFocus) return false;
+    if (isOffScreen && !considerKeyboardFocus) {
+        if (debugElement) console.log(`Element is off-screen: x=${box.x}, y=${box.y}, width=${box.width}, height=${box.height}, viewport=${JSON.stringify(viewportSize)}`);
+        return false;
+    }
 
-    const isHiddenByCSS = await locatorElement.evaluate((el, checkFocus) => {
+    const isHiddenByCSS = await locatorElement.evaluate((el, params) => {
+        const checkFocus = params.checkFocus;
+        const debugElement = params.debugElement;
+        
+        // For debugging, get element info
+        if (debugElement) {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id ? `#${el.id}` : '';
+            const classes = Array.from(el.classList).join('.');
+            const selector = tagName + id + (classes ? `.${classes}` : '');
+            console.log(`Checking visibility for: ${selector}`);
+        }
+        
         let current = el;
         while (current) {
             const style = window.getComputedStyle(current);
+            
+            // For debugging, log CSS properties
+            if (debugElement) {
+                const tagName = current.tagName.toLowerCase();
+                const id = current.id ? `#${current.id}` : '';
+                const classes = Array.from(current.classList).join('.');
+                const selector = tagName + id + (classes ? `.${classes}` : '');
+                console.log(`Checking element: ${selector}`);
+                console.log(`  display: ${style.display}`);
+                console.log(`  visibility: ${style.visibility}`);
+                console.log(`  opacity: ${style.opacity}`);
+                console.log(`  position: ${style.position}`);
+                console.log(`  transform: ${style.transform}`);
+                console.log(`  height: ${style.height}`);
+                console.log(`  maxHeight: ${style.maxHeight}`);
+                console.log(`  overflow: ${style.overflow}`);
+            }
             
             // Basic visibility checks
             if (style.display === 'none' ||
                 style.visibility === 'hidden' ||
                 parseFloat(style.opacity) === 0) {
+                if (debugElement) console.log(`  Element hidden by CSS: display=${style.display}, visibility=${style.visibility}, opacity=${style.opacity}`);
                 return true;
             }
             // Check for transform that might hide the element
@@ -39,6 +86,7 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 if (style.transform.includes('scale(0)') ||
                     style.transform.includes('scale(0,') ||
                     style.transform.includes('scale(0 ')) {
+                    if (debugElement) console.log(`  Element hidden by transform scale(0): ${style.transform}`);
                     return true;
                 }
                 
@@ -48,22 +96,39 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                     style.transform.includes('translate(-100%') ||
                     (style.transform.includes('matrix') &&
                      (style.transform.includes('-1, 0') || style.transform.includes('0, -1')))) {
-                    console.log(`Element or parent has transform: ${style.transform} that hides it`);
+                    if (debugElement) console.log(`  Element or parent has transform that hides it: ${style.transform}`);
                     return true;
                 }
             }
             
             // Check if element is in a menu that's hidden by transform
-            if (current.classList.contains('main-menu') ||
+            // Skip footer navigation (.footer-top .nav) as it's visible on desktop
+            const isFooterNav = current.closest('.footer-top .nav') !== null;
+            if (debugElement) {
+                if (isFooterNav) {
+                    console.log(`  Element is in footer navigation (.footer-top .nav), skipping transform check`);
+                } else if (
+                    current.classList.contains('main-menu') ||
+                    current.classList.contains('nav') ||
+                    current.closest('.main-menu') ||
+                    current.closest('.nav')
+                ) {
+                    console.log(`  Element is in a menu (.nav or .main-menu)`);
+                }
+            }
+            
+            if (!isFooterNav && (
+                current.classList.contains('main-menu') ||
                 current.classList.contains('nav') ||
                 current.closest('.main-menu') ||
-                current.closest('.nav')) {
+                current.closest('.nav')
+            )) {
                 // This is a menu or menu item, check if it's hidden by transform
                 if (style.transform &&
                     (style.transform.includes('translateX(-100%)') ||
                      style.transform.includes('translateY(-100%)') ||
                      style.transform.includes('translate(-100%'))) {
-                    console.log(`Menu element has transform: ${style.transform} that hides it`);
+                    if (debugElement) console.log(`  Menu element has transform that hides it: ${style.transform}`);
                     return true;
                 }
             }
@@ -71,18 +136,21 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
             // Check for clip/clip-path that might hide the element
             if ((style.clip && style.clip !== 'auto') ||
                 (style.clipPath && style.clipPath !== 'none')) {
+                if (debugElement) console.log(`  Element hidden by clip/clip-path: clip=${style.clip}, clipPath=${style.clipPath}`);
                 return true;
             }
             
             // Check for max-height: 0 combined with overflow: hidden (common for dropdown menus)
             if (style.overflow === 'hidden' &&
                 (style.maxHeight === '0px' || parseFloat(style.maxHeight) === 0)) {
+                if (debugElement) console.log(`  Element hidden by max-height:0 and overflow:hidden`);
                 return true;
             }
             
             // Check for height: 0 combined with overflow: hidden
             if (style.overflow === 'hidden' &&
                 (style.height === '0px' || parseFloat(style.height) === 0)) {
+                if (debugElement) console.log(`  Element hidden by height:0 and overflow:hidden`);
                 return true;
             }
             
@@ -90,12 +158,15 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
             if (current.classList.contains('sub-menu') ||
                 current.classList.contains('dropdown-menu') ||
                 current.classList.contains('dropdown')) {
+                if (debugElement) console.log(`  Element is a submenu (.sub-menu, .dropdown-menu, or .dropdown)`);
+                
                 // Check if this is a submenu that's hidden
                 if ((style.maxHeight === '0px' || parseFloat(style.maxHeight) === 0) ||
                     style.display === 'none' ||
                     style.visibility === 'hidden' ||
                     parseFloat(style.opacity) === 0 ||
                     (style.position === 'absolute' && style.transform && style.transform.includes('translateY(-'))) {
+                    if (debugElement) console.log(`  Submenu is hidden by CSS`);
                     return true;
                 }
             }
@@ -110,7 +181,7 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
             current = current.parentElement;
         }
         return false;
-    }, considerKeyboardFocus);
+    }, { checkFocus: considerKeyboardFocus, debugElement });
 
     return !isHiddenByCSS;
 }

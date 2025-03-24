@@ -6,7 +6,7 @@ import { testFocusOutline } from './test-steps/focus-outline.ts';
 const testWebsites = [
     // 'https://academy.bricksbuilder.io/article/menu-builder/',
     // 'https://labelvier.nl/',
-    // 'https://spankrachtontwerpers.nl',
+    'https://spankrachtontwerpers.nl',
     // 'https://ghost.org/',
     // 'https://www.framer.com/',
     // 'https://webflow.com/',
@@ -15,7 +15,7 @@ const testWebsites = [
     // 'https://www.d-tec.eu/',
     // 'https://stuurlui.nl/',
     // 'https://gravity.nl/',
-    'https://census.nl',
+    // 'https://census.nl',
     // 'https://afrikatikkun.org/',
     // 'https://daveden.co.uk/',
     // 'https://equalizedigital.com/',
