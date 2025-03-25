@@ -15,16 +15,7 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
         console.log(`Element is controlled via aria-controls, may be toggled by user interaction`);
     }
     
-    // First check if this is the footer navigation, which the user has confirmed is visible
-    const isFooterNav = await locatorElement.evaluate(el => {
-        return el.closest('.footer-top .nav') !== null ||
-               (el.classList.contains('nav') && el.closest('footer') !== null);
-    });
-    
-    if (isFooterNav) {
-        if (debugElement) console.log(`Element is in footer navigation (.footer-top .nav), considering it visible`);
-        return true;
-    }
+    // No special case for footer navigation - all elements are treated equally
 
     const box = await locatorElement.boundingBox();
     if (!box || box.width === 0 || box.height === 0) {
@@ -89,56 +80,86 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 if (debugElement) console.log(`  Element hidden by CSS: display=${style.display}, visibility=${style.visibility}, opacity=${style.opacity}`);
                 return true;
             }
-            // Check for transform that might hide the element
+            // Check if element is effectively invisible due to transforms
             if (style.transform) {
-                // Check for scale(0) which makes element invisible
-                if (style.transform.includes('scale(0)') ||
-                    style.transform.includes('scale(0,') ||
-                    style.transform.includes('scale(0 ')) {
-                    if (debugElement) console.log(`  Element hidden by transform scale(0): ${style.transform}`);
+                // Check for zero scale which makes element invisible
+                if (style.transform.includes('scale(0') || style.transform.includes('scale3d(0')) {
+                    if (debugElement) console.log(`  Element hidden by zero scale transform: ${style.transform}`);
                     return true;
                 }
                 
-                // Check for translateX(-100%) or similar transforms that move element off-screen
-                if (style.transform.includes('translateX(-100%)') ||
-                    style.transform.includes('translateY(-100%)') ||
-                    style.transform.includes('translate(-100%') ||
-                    (style.transform.includes('matrix') &&
-                     (style.transform.includes('-1, 0') || style.transform.includes('0, -1')))) {
-                    if (debugElement) console.log(`  Element or parent has transform that hides it: ${style.transform}`);
+                // Instead of checking for specific transform values, check if the element is off-screen
+                // Get element's bounding rect after transforms are applied
+                const rect = current.getBoundingClientRect();
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                
+                // Check if element is completely off-screen
+                const isOffScreen =
+                    rect.right <= 0 || // Off to the left
+                    rect.bottom <= 0 || // Off to the top
+                    rect.left >= viewportWidth || // Off to the right
+                    rect.top >= viewportHeight; // Off to the bottom
+                
+                if (isOffScreen) {
+                    if (debugElement) console.log(`  Element is off-screen due to transform: left=${rect.left}, top=${rect.top}, right=${rect.right}, bottom=${rect.bottom}`);
+                    return true;
+                }
+                
+                // Check if element has zero dimensions after transform
+                if (rect.width === 0 || rect.height === 0) {
+                    if (debugElement) console.log(`  Element has zero dimensions after transform: width=${rect.width}, height=${rect.height}`);
                     return true;
                 }
             }
             
-            // Check if element is in a menu that's hidden by transform
-            // Skip footer navigation (.footer-top .nav) as it's visible on desktop
-            const isFooterNav = current.closest('.footer-top .nav') !== null;
+            // Check if element is a navigation or menu element
             if (debugElement) {
-                if (isFooterNav) {
-                    console.log(`  Element is in footer navigation (.footer-top .nav), skipping transform check`);
-                } else if (
-                    current.classList.contains('main-menu') ||
-                    current.classList.contains('nav') ||
-                    current.closest('.main-menu') ||
-                    current.closest('.nav')
+                if (
+                    current.getAttribute('role') === 'navigation' ||
+                    current.tagName.toLowerCase() === 'nav' ||
+                    current.closest('[role="navigation"]') !== null ||
+                    current.closest('nav') !== null ||
+                    current.closest('[class*="menu"]') !== null ||
+                    current.closest('[class*="nav"]') !== null
                 ) {
-                    console.log(`  Element is in a menu (.nav or .main-menu)`);
+                    console.log(`  Element is in a menu or navigation element`);
                 }
             }
             
-            if (!isFooterNav && (
-                current.classList.contains('main-menu') ||
-                current.classList.contains('nav') ||
-                current.closest('.main-menu') ||
-                current.closest('.nav')
-            )) {
+            // Check if navigation or menu element is hidden by transform
+            if (
+                current.getAttribute('role') === 'navigation' ||
+                current.tagName.toLowerCase() === 'nav' ||
+                current.closest('[role="navigation"]') !== null ||
+                current.closest('nav') !== null ||
+                current.closest('[class*="menu"]') !== null ||
+                current.closest('[class*="nav"]') !== null
+            ) {
                 // This is a menu or menu item, check if it's hidden by transform
-                if (style.transform &&
-                    (style.transform.includes('translateX(-100%)') ||
-                     style.transform.includes('translateY(-100%)') ||
-                     style.transform.includes('translate(-100%'))) {
-                    if (debugElement) console.log(`  Menu element has transform that hides it: ${style.transform}`);
-                    return true;
+                if (style.transform) {
+                    // Get element's bounding rect after transforms are applied
+                    const rect = current.getBoundingClientRect();
+                    const viewportWidth = window.innerWidth;
+                    const viewportHeight = window.innerHeight;
+                    
+                    // Check if menu element is completely off-screen
+                    const isOffScreen =
+                        rect.right <= 0 || // Off to the left
+                        rect.bottom <= 0 || // Off to the top
+                        rect.left >= viewportWidth || // Off to the right
+                        rect.top >= viewportHeight; // Off to the bottom
+                    
+                    if (isOffScreen) {
+                        if (debugElement) console.log(`  Menu element is off-screen due to transform: left=${rect.left}, top=${rect.top}, right=${rect.right}, bottom=${rect.bottom}`);
+                        return true;
+                    }
+                    
+                    // Check if menu element has zero dimensions after transform
+                    if (rect.width === 0 || rect.height === 0) {
+                        if (debugElement) console.log(`  Menu element has zero dimensions after transform: width=${rect.width}, height=${rect.height}`);
+                        return true;
+                    }
                 }
             }
             
@@ -209,262 +230,345 @@ export async function goToUrl( page: Page, url: string ) {
 }
 
 export async function detectAndClosePopup(page: Page) {
-    // Check if we're on census.nl
-    const isCensus = await page.evaluate(() => {
-        return window.location.hostname.includes('census.nl');
-    });
-
-    if (isCensus) {
-        console.log('Detected census.nl website, checking for specific popups...');
-        try {
-            // Check for census.nl cookie consent popup
-            const censusPopupSelectors = [
-                // Common census.nl popup selectors
-                '#cookie-notice',
-                '.cookie-popup',
-                '.cookie-banner',
-                '.cookie-consent',
-                '.consent-popup',
-                // More specific selectors for census.nl
-                '.census-popup',
-                '.census-cookie-notice',
-                // Generic popup selectors that might apply
-                '.popup-overlay',
-                '.modal-overlay',
-                '.overlay',
-                // Dialog elements
-                'dialog[open]',
-                '[role="dialog"]',
-                // Elements with high z-index
-                '[style*="z-index: 9999"]',
-                '[style*="z-index: 999"]',
-                '[style*="z-index: 99"]'
-            ];
-
-            for (const selector of censusPopupSelectors) {
-                const popup = await page.locator(selector).first();
-                const isVisible = await popup.isVisible().catch(() => false);
-                
-                if (isVisible) {
-                    console.log(`Found census.nl popup: ${selector}`);
-                    
-                    // Try to find and click accept/close buttons
-                    const buttonSelectors = [
-                        'button:has-text("Accept")',
-                        'button:has-text("Accepteren")',
-                        'button:has-text("Agree")',
-                        'button:has-text("OK")',
-                        'button:has-text("Close")',
-                        'button:has-text("Sluiten")',
-                        '.close-button',
-                        '.dismiss-button',
-                        '.accept-button',
-                        'button.accept',
-                        'button.close',
-                        '[aria-label="Close"]',
-                        '[aria-label="Sluiten"]'
-                    ];
-                    
-                    for (const buttonSelector of buttonSelectors) {
-                        const button = await popup.locator(buttonSelector).first();
-                        const buttonVisible = await button.isVisible().catch(() => false);
-                        
-                        if (buttonVisible) {
-                            console.log(`Clicking button: ${buttonSelector}`);
-                            await button.click();
-                            await page.waitForTimeout(1000); // Wait longer for census.nl
-                            return true;
-                        }
-                    }
-                    
-                    // If no specific button found, try clicking the popup itself
-                    console.log('No specific button found, trying to click the popup itself');
-                    await popup.click();
-                    await page.waitForTimeout(1000);
-                    
-                    // Try pressing Escape as a last resort
-                    console.log('Trying Escape key');
-                    await page.keyboard.press('Escape');
-                    await page.waitForTimeout(1000);
-                    
-                    return true;
-                }
+    console.log(`Checking for popups on the current page`);
+    
+    // First, identify and ignore common chat widgets
+    try {
+        // Common chat widget selectors
+        const chatWidgetSelectors = [
+            // Common chat widget selectors
+            '.drift-widget',
+            '.intercom-frame',
+            '.crisp-client',
+            '.tawk-widget',
+            '.fb_dialog',
+            '.zopim',
+            '.livechat-widget',
+            '.tidio-chat',
+            '.chat-widget',
+            '.support-chat',
+            '.live-chat',
+            // Attribute-based selectors
+            '[aria-label*="chat"]',
+            '[aria-label*="Chat"]',
+            '[data-testid*="chat"]',
+            '[id*="chat"]',
+            '[class*="chat"]'
+        ];
+        
+        // Check if any chat widgets exist and log them, but don't try to close them
+        for (const selector of chatWidgetSelectors) {
+            const chatWidget = await page.locator(selector).first();
+            const isVisible = await chatWidget.isVisible().catch(() => false);
+            
+            if (isVisible) {
+                console.log(`Detected chat widget: ${selector} - IGNORING`);
+                // Don't attempt to close chat widgets
             }
+        }
+    } catch (error) {
+        console.log('Error checking for chat widgets:', error.message);
+    }
+    
+    // Check for common cookie consent popups
+    try {
+        // Common cookie popup selectors
+        const cookiePopupSelectors = [
+            '#cookie-notice',
+            '#cookie-law-info-bar',
+            '.cookie-popup',
+            '.cookie-banner',
+            '.cookie-consent',
+            '.consent-popup',
+            '.cookie-notice',
+            '.cli-modal',
+            'div:has-text("Onze website gebruikt cookies")',
+            'div:has-text("This website uses cookies")',
+            'div:has-text("We use cookies")'
+        ];
+
+        for (const selector of cookiePopupSelectors) {
+            const popup = await page.locator(selector).first();
+            const isVisible = await popup.isVisible().catch(() => false);
             
-            // If no popup found with selectors, try a more aggressive approach
-            console.log('No popup found with selectors, trying more aggressive detection');
-            
-            // Look for fixed or absolute positioned elements with high z-index
-            const potentialPopups = await page.evaluate(() => {
-                interface PopupInfo {
-                    tag: string;
-                    id: string;
-                    classes: string;
-                    zIndex: string;
-                    position: string;
-                }
+            if (isVisible) {
+                console.log(`Found cookie popup: ${selector}`);
                 
-                const results: PopupInfo[] = [];
-                const elements = document.querySelectorAll('*');
+                // Try to find and click accept/close buttons
+                const buttonSelectors = [
+                    'button:has-text("Accept")',
+                    'button:has-text("Accept All")',
+                    'button:has-text("Accepteren")',
+                    'button:has-text("Agree")',
+                    'button:has-text("I agree")',
+                    'button:has-text("OK")',
+                    'button:has-text("Got it")',
+                    'button:has-text("Close")',
+                    'button:has-text("Sluiten")',
+                    '.close-button',
+                    '.dismiss-button',
+                    '.accept-button',
+                    '.cli-accept-button',
+                    '.cli-accept-all',
+                    '.cookie-accept',
+                    'button.accept',
+                    'button.close',
+                    '[aria-label="Accept cookies"]',
+                    '[aria-label="Close"]',
+                    '[aria-label="Sluiten"]',
+                    '[data-testid="cookie-accept"]'
+                ];
                 
-                for (const el of elements) {
-                    const style = window.getComputedStyle(el);
-                    if (
-                        (style.position === 'fixed' || style.position === 'absolute') &&
-                        style.zIndex !== 'auto' && parseInt(style.zIndex, 10) > 50 &&
-                        el.tagName !== 'HTML' && el.tagName !== 'BODY' &&
-                        style.display !== 'none' && style.visibility !== 'hidden'
-                    ) {
-                        // Get element details for logging
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > 100 && rect.height > 100) {
-                            results.push({
-                                tag: el.tagName.toLowerCase(),
-                                id: el.id,
-                                classes: Array.from(el.classList).join(' '),
-                                zIndex: style.zIndex,
-                                position: style.position
-                            });
-                        }
+                for (const buttonSelector of buttonSelectors) {
+                    const button = await popup.locator(buttonSelector).first();
+                    const buttonVisible = await button.isVisible().catch(() => false);
+                    
+                    if (buttonVisible) {
+                        console.log(`Clicking button: ${buttonSelector}`);
+                        await button.click();
+                        await page.waitForTimeout(1000);
+                        return true;
                     }
                 }
-                return results;
-            });
-            
-            if (potentialPopups.length > 0) {
-                console.log('Found potential popups on census.nl:', potentialPopups);
                 
-                // Try pressing Escape to close any potential popup
-                console.log('Trying Escape key to close potential popups');
+                // If no specific button found, try clicking the popup itself
+                console.log('No specific button found, trying to click the popup itself');
+                await popup.click();
+                await page.waitForTimeout(1000);
+                
+                // Try pressing Escape as a last resort
+                console.log('Trying Escape key');
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(1000);
                 
                 return true;
             }
-        } catch (error) {
-            console.log('Error handling census.nl popup:', error.message);
-        }
-    }
-
-    // First, check for common cookie consent popups
-    try {
-        // Check for labelvier.nl cookie popup specifically
-        const cookiePopup = await page.locator('div:has-text("Onze website gebruikt cookies")').first();
-        const cookiePopupVisible = await cookiePopup.isVisible();
-        
-        if (cookiePopupVisible) {
-            console.log('Detected cookie consent popup on labelvier.nl');
-            
-            // Try to find and click the "Accepteren" button
-            const acceptButton = await page.locator('button:has-text("accepteren")').first();
-            const acceptButtonVisible = await acceptButton.isVisible();
-            
-            if (acceptButtonVisible) {
-                console.log('Clicking "Accepteren" button to accept cookies');
-                await acceptButton.click();
-                await page.waitForTimeout(500);
-                return true;
-            } else {
-                // Try to find any button that might accept cookies
-                const anyAcceptButton = await page.locator('button, .accept, .accept-cookies, .accept-all, [role="button"]').filter({ hasText: /accept|accepteren|agree|ok|yes/i }).first();
-                const anyButtonVisible = await anyAcceptButton.isVisible();
-                
-                if (anyButtonVisible) {
-                    console.log('Clicking accept button to accept cookies');
-                    await anyAcceptButton.click();
-                    await page.waitForTimeout(500);
-                    return true;
-                }
-            }
         }
         
-        // Check for other common cookie consent patterns
-        const commonCookieButtons = [
-            'button:has-text("Accept")',
-            'button:has-text("Accept All")',
-            'button:has-text("Accepteren")',
-            'button:has-text("Agree")',
-            'button:has-text("I agree")',
-            'button:has-text("OK")',
-            'button:has-text("Got it")',
-            '[aria-label="Accept cookies"]',
-            '[data-testid="cookie-accept"]'
-        ];
+        // Try to find any button that might accept cookies
+        const anyAcceptButton = await page.locator('button, .accept, .accept-cookies, .accept-all, [role="button"]').filter({ hasText: /accept|accepteren|agree|ok|yes/i }).first();
+        const anyButtonVisible = await anyAcceptButton.isVisible().catch(() => false);
         
-        for (const selector of commonCookieButtons) {
-            const button = await page.locator(selector).first();
-            const isVisible = await button.isVisible();
-            
-            if (isVisible) {
-                console.log(`Found cookie consent button: ${selector}`);
-                await button.click();
-                await page.waitForTimeout(500);
-                return true;
-            }
+        if (anyButtonVisible) {
+            console.log('Clicking accept button to accept cookies');
+            await anyAcceptButton.click();
+            await page.waitForTimeout(500);
+            return true;
         }
     } catch (error) {
         console.log('Error handling cookie popup:', error.message);
     }
 
-    // Then check for other types of popups
+    // Check for other types of popups
     try {
-        const bodyBox = await page.evaluate(() => {
-            const body = document.body.getBoundingClientRect();
-            return { x: body.x, y: body.y, width: body.width, height: body.height };
-        });
-
-        const popups = await page.$$('*'); // Get all elements
-        for (const popup of popups) {
-            const box = await popup.boundingBox();
-            if (!box) continue;
-
-            // Get tag name
-            const tagName = await popup.evaluate(el => el.tagName.toLowerCase());
-            if (tagName === 'html' || tagName === 'body') continue;
-
-            // Ensure element is positioned above content
-            const computedStyles = await popup.evaluate(el => {
-                const styles = window.getComputedStyle(el);
-                return {
-                    zIndex: styles.zIndex,
-                    position: styles.position,
-                    pointerEvents: styles.pointerEvents,
-                    display: styles.display,
-                    visibility: styles.visibility,
-                };
-            });
-
-            // Skip if element is hidden or non-interactable
-            if (
-                computedStyles.display === 'none' ||
-                computedStyles.visibility === 'hidden' ||
-                computedStyles.pointerEvents === 'none'
-            ) continue;
-
-            // Accept smaller popups if they are positioned on top
-            const isPopup =
-                ['fixed', 'absolute'].includes(computedStyles.position) && // Positioned above content
-                computedStyles.zIndex !== 'auto' && parseInt(computedStyles.zIndex, 10) > 10; // High z-index
-
-            if (isPopup) {
-                const textContent = await popup.evaluate(el => el.textContent?.trim().substring(0, 100) || '');
-                console.log(`Detected popup: <${tagName}> - "${textContent}"`);
-                console.log('Visual popup detected. Attempting to close...');
-
-                try {
-                    const closeButton = await popup.$('button, [role="button"], .dismiss, .close, .btn-close');
-                    if (closeButton) {
-                        await closeButton.click();
-                        console.log('Popup closed.');
-                        await page.waitForTimeout(500);
-                        return true;
-                    } else {
-                        console.log('No close button found. Trying Escape key.');
-                        await page.keyboard.press('Escape');
-                    }
-                } catch (error) {
-                    console.log('Error closing popup:', error.message);
+        // Look for common popup selectors
+        const popupSelectors = [
+            // Dialog elements
+            'dialog[open]',
+            '[role="dialog"]',
+            // Common popup classes
+            '.popup',
+            '.modal',
+            '.overlay',
+            '.popup-overlay',
+            '.modal-overlay',
+            '.dialog-widget',
+            // Elements with high z-index
+            '[style*="z-index: 9999"]',
+            '[style*="z-index: 999"]',
+            '[style*="z-index: 99"]'
+        ];
+        
+        for (const selector of popupSelectors) {
+            const popup = await page.locator(selector).first();
+            const isVisible = await popup.isVisible().catch(() => false);
+            
+            if (isVisible) {
+                // Check if this is a chat widget (which we want to ignore)
+                const isChatWidget = await popup.evaluate(el => {
+                    const text = el.textContent?.toLowerCase() || '';
+                    const id = el.id?.toLowerCase() || '';
+                    const className = Array.from(el.classList).join(' ').toLowerCase();
+                    const ariaLabel = el.getAttribute('aria-label')?.toLowerCase() || '';
+                    
+                    // Check for common chat widget indicators
+                    return (
+                        id.includes('chat') || 
+                        className.includes('chat') || 
+                        ariaLabel.includes('chat') ||
+                        text.includes('chat with us') ||
+                        text.includes('live chat') ||
+                        text.includes('support chat')
+                    );
+                });
+                
+                if (isChatWidget) {
+                    console.log(`Detected chat widget with selector ${selector} - IGNORING`);
+                    continue;
                 }
+                
+                console.log(`Found popup: ${selector}`);
+                
+                // Try to find and click close buttons
+                const closeButton = await popup.locator(
+                    'button.close, .close-button, .dismiss, .btn-close, ' +
+                    '[aria-label="Close"], [aria-label="Dismiss"], ' +
+                    '[class*="close"], [id*="close"], ' +
+                    'button:has-text("Close"), button:has-text("Dismiss"), ' +
+                    'button:has-text("×"), button:has-text("✕"), button:has-text("✖")'
+                ).first();
+                
+                const buttonVisible = await closeButton.isVisible().catch(() => false);
+                
+                if (buttonVisible) {
+                    console.log(`Clicking close button on popup`);
+                    await closeButton.click();
+                    await page.waitForTimeout(1000);
+                    return true;
+                } else {
+                    // Try pressing Escape as a last resort
+                    console.log('No close button found. Trying Escape key.');
+                    await page.keyboard.press('Escape');
+                    await page.waitForTimeout(1000);
+                    return true;
+                }
+            }
+        }
+        
+        // If no popup found with selectors, try a more general approach
+        console.log('No popup found with selectors, trying more general detection');
+        
+        // Look for fixed or absolute positioned elements with high z-index
+        const potentialPopups = await page.evaluate(() => {
+            // Function to check if an element is likely a chat widget
+            const isChatWidget = (el) => {
+                const text = el.textContent?.toLowerCase() || '';
+                const id = el.id?.toLowerCase() || '';
+                const className = Array.from(el.classList).join(' ').toLowerCase();
+                const ariaLabel = el.getAttribute('aria-label')?.toLowerCase() || '';
+                
+                // Check for common chat widget indicators
+                return (
+                    id.includes('chat') || 
+                    className.includes('chat') || 
+                    ariaLabel.includes('chat') ||
+                    text.includes('chat with us') ||
+                    text.includes('live chat') ||
+                    text.includes('support chat')
+                );
+            };
+            
+            // Function to check if an element has a visible close button
+            const hasCloseButton = (el) => {
+                // Look for close buttons within this element
+                const closeButton = el.querySelector(
+                    'button.close, .close-button, .dismiss, .btn-close, ' +
+                    '[aria-label="Close"], [aria-label="Dismiss"], ' +
+                    '[class*="close"], [id*="close"], ' +
+                    'button:has-text("Close"), button:has-text("Dismiss"), ' +
+                    'button:has-text("×"), button:has-text("✕"), button:has-text("✖")'
+                );
+                
+                return closeButton !== null && 
+                       window.getComputedStyle(closeButton).display !== 'none' &&
+                       window.getComputedStyle(closeButton).visibility !== 'hidden';
+            };
+            
+            interface PopupInfo {
+                tag: string;
+                id: string;
+                classes: string;
+                zIndex: string;
+                position: string;
+                hasCloseButton: boolean;
+                isChatWidget: boolean;
+                selector: string;
+            }
+            
+            const results: PopupInfo[] = [];
+            const elements = document.querySelectorAll('*');
+            
+            for (const el of elements) {
+                const style = window.getComputedStyle(el);
+                if (
+                    (style.position === 'fixed' || style.position === 'absolute') &&
+                    style.zIndex !== 'auto' && parseInt(style.zIndex, 10) > 50 &&
+                    el.tagName !== 'HTML' && el.tagName !== 'BODY' &&
+                    style.display !== 'none' && style.visibility !== 'hidden'
+                ) {
+                    // Get element details for logging
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width > 100 && rect.height > 100) {
+                        const id = el.id || '';
+                        const classes = Array.from(el.classList).join(' ');
+                        let selector = el.tagName.toLowerCase();
+                        if (id) selector += `#${id}`;
+                        else if (classes) {
+                            const firstClass = classes.split(' ')[0];
+                            if (firstClass) selector += `.${firstClass}`;
+                        }
+                        
+                        results.push({
+                            tag: el.tagName.toLowerCase(),
+                            id,
+                            classes,
+                            zIndex: style.zIndex,
+                            position: style.position,
+                            hasCloseButton: hasCloseButton(el),
+                            isChatWidget: isChatWidget(el),
+                            selector
+                        });
+                    }
+                }
+            }
+            return results;
+        });
+        
+        if (potentialPopups.length > 0) {
+            console.log('Found potential floating elements:', potentialPopups);
+            
+            // Only try to close elements that:
+            // 1. Have a close button
+            // 2. Are not identified as chat widgets
+            const actualPopups = potentialPopups.filter(p => p.hasCloseButton && !p.isChatWidget);
+            
+            if (actualPopups.length > 0) {
+                console.log('Identified actual popups with close buttons:', actualPopups);
+                
+                // Try to close each actual popup
+                for (const popupInfo of actualPopups) {
+                    const popup = await page.locator(popupInfo.selector).first();
+                    const isVisible = await popup.isVisible().catch(() => false);
+                    
+                    if (isVisible) {
+                        console.log(`Attempting to close popup: ${popupInfo.selector}`);
+                        
+                        // Find and click the close button
+                        const closeButton = await popup.locator(
+                            'button.close, .close-button, .dismiss, .btn-close, ' +
+                            '[aria-label="Close"], [aria-label="Dismiss"], ' +
+                            '[class*="close"], [id*="close"], ' +
+                            'button:has-text("Close"), button:has-text("Dismiss"), ' +
+                            'button:has-text("×"), button:has-text("✕"), button:has-text("✖")'
+                        ).first();
+                        
+                        const buttonVisible = await closeButton.isVisible().catch(() => false);
+                        
+                        if (buttonVisible) {
+                            console.log(`Clicking close button on popup`);
+                            await closeButton.click();
+                            await page.waitForTimeout(1000);
+                            return true;
+                        }
+                    }
+                }
+            } else {
+                console.log('No actual popups found, only chat widgets or elements without close buttons - IGNORING');
+                
+                // Try pressing Escape to close any potential popup
+                console.log('Trying Escape key to close potential popups');
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(1000);
             }
         }
     } catch (error) {
