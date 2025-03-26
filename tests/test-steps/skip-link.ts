@@ -1,6 +1,21 @@
 import { test, Page } from "@playwright/test";
 import { goToUrl, detectAndClosePopup } from "../helpers/general";
 
+/**
+ * Skip link accessibility testing
+ *
+ * IMPORTANT: These tests must be universal and should not contain any website-specific references.
+ * Do not add hardcoded references to specific website URLs, frameworks, or CSS classes.
+ * All selectors should be generic and work across different websites regardless of the underlying
+ * technology (WordPress, Elementor, Webflow, custom frameworks, etc.).
+ *
+ * When adding new functionality:
+ * 1. Use generic selectors and patterns that work across different websites
+ * 2. Avoid assumptions about specific frameworks or CMS systems
+ * 3. Focus on accessibility standards and WCAG compliance rather than implementation details
+ * 4. Use feature detection rather than framework detection
+ */
+
 export async function testSkipLinks(page: Page, websiteUrl: string) {
         await test.step(`Visit website and validate skip link - ${websiteUrl}`, async () => {
                 let isValidSkipLink = false;

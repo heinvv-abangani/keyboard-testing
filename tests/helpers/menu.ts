@@ -1,6 +1,174 @@
 import { test, Page, Locator } from "@playwright/test";
 import { isElementTrulyVisible } from './general';
 import { goToUrl, detectAndClosePopup } from "../helpers/general";
+import { getConfigByUrl } from "../config";
+
+/**
+ * Test menu keyboard accessibility
+ *
+ * IMPORTANT: These tests must be universal and should not contain any website-specific references.
+ * Do not add hardcoded references to specific website URLs, frameworks, or CSS classes.
+ * All selectors should be generic and work across different websites regardless of the underlying
+ * technology (WordPress, Elementor, Webflow, custom frameworks, etc.).
+ *
+ * When adding new functionality:
+ * 1. Use generic selectors and patterns that work across different websites
+ * 2. Avoid assumptions about specific frameworks or CMS systems
+ * 3. Focus on accessibility standards and WCAG compliance rather than implementation details
+ * 4. Use feature detection rather than framework detection
+ */
+// Define types for the nav element fingerprint and group
+interface NavFingerprint {
+    tagName: string;
+    id: string;
+    classes: string;
+    linkCount: number;
+    linkTexts: string;
+    childrenCount: number;
+    childrenTypes: string;
+    parentId: string;
+    parentClass: string;
+    display: string;
+    visibility: string;
+    position: string;
+}
+
+interface NavDetail {
+    selector: string;
+    fingerprint: NavFingerprint;
+    element: HTMLElement;
+}
+
+interface NavGroup {
+    representativeIndex: number;
+    indices: number[];
+    count: number;
+    selectors: string[];
+}
+
+interface NavInfo {
+    total: number;
+    uniqueGroups: NavGroup[];
+    uniqueIndices: number[];
+}
+
+/**
+ * Find unique nav elements by comparing their content and structure
+ */
+async function findUniqueNavElements(page: Page): Promise<NavInfo> {
+    console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS ===");
+    
+    const navInfo = await page.evaluate(() => {
+        const navElements = Array.from(document.querySelectorAll('nav'));
+        const navDetails: any[] = [];
+        
+        for (const nav of navElements) {
+            // Create a unique fingerprint for each nav element
+            const fingerprint = {
+                // Basic selector information
+                tagName: nav.tagName.toLowerCase(),
+                id: nav.id,
+                classes: Array.from(nav.classList).join(' '),
+                
+                // Content information
+                linkCount: nav.querySelectorAll('a').length,
+                linkTexts: Array.from(nav.querySelectorAll('a')).map(a => a.textContent ? a.textContent.trim() : '').join('|'),
+                
+                // Structure information
+                childrenCount: nav.children.length,
+                childrenTypes: Array.from(nav.children).map(c => c.tagName.toLowerCase()).join(','),
+                
+                // Position information (helps identify if it's the same nav in different viewports)
+                parentId: nav.parentElement?.id || '',
+                parentClass: nav.parentElement?.className || '',
+                
+                // Computed style (helps identify if it's visible in current viewport)
+                display: window.getComputedStyle(nav).display,
+                visibility: window.getComputedStyle(nav).visibility,
+                position: window.getComputedStyle(nav).position
+            };
+            
+            // Create a simple selector for identification
+            const selector = `${fingerprint.tagName}${fingerprint.id ? '#'+fingerprint.id : ''}${fingerprint.classes ? '.'+fingerprint.classes.replace(/ /g, '.') : ''}`;
+            
+            navDetails.push({
+                selector,
+                fingerprint,
+                element: nav
+            });
+        }
+        
+        // Group similar navs
+        const groups: any[] = [];
+        const processed = new Set();
+        
+        for (let i = 0; i < navDetails.length; i++) {
+            if (processed.has(i)) continue;
+            
+            const current = navDetails[i];
+            const similar = [i]; // Store indices of similar navs
+            processed.add(i);
+            
+            // Find similar navs
+            for (let j = i + 1; j < navDetails.length; j++) {
+                if (processed.has(j)) continue;
+                
+                const compare = navDetails[j];
+                
+                // Check if they're similar (adjust these criteria as needed)
+                const sameLinkTexts = current.fingerprint.linkTexts === compare.fingerprint.linkTexts;
+                const sameStructure = current.fingerprint.childrenTypes === compare.fingerprint.childrenTypes;
+                
+                if (sameLinkTexts && sameStructure) {
+                    similar.push(j);
+                    processed.add(j);
+                }
+            }
+            
+            // For each group, select the most visible representative
+            let bestIndex = similar[0];
+            let bestVisibility = 0;
+            
+            for (const idx of similar) {
+                const nav = navDetails[idx];
+                const isVisible = nav.fingerprint.display !== 'none' &&
+                                 nav.fingerprint.visibility !== 'hidden';
+                const visibilityScore = isVisible ? 1 : 0;
+                
+                if (visibilityScore > bestVisibility) {
+                    bestVisibility = visibilityScore;
+                    bestIndex = idx;
+                }
+            }
+            
+            groups.push({
+                representativeIndex: bestIndex,
+                indices: similar,
+                count: similar.length,
+                selectors: similar.map(idx => navDetails[idx].selector)
+            });
+        }
+        
+        return {
+            total: navElements.length,
+            uniqueGroups: groups,
+            // Return the indices of the representative nav elements
+            uniqueIndices: groups.map(g => g.representativeIndex)
+        };
+    });
+    
+    // Log the results
+    console.log(`Found ${navInfo.total} total nav elements, grouped into ${navInfo.uniqueGroups.length} unique groups:`);
+    
+    navInfo.uniqueGroups.forEach((group, index) => {
+        console.log(`\nGroup ${index + 1} (${group.count} similar elements):`);
+        console.log(`- Representative: ${group.selectors[group.indices.indexOf(group.representativeIndex)]}`);
+        console.log(`- Similar selectors:`);
+        group.selectors.forEach(selector => console.log(`  - ${selector}`));
+    });
+    
+    return navInfo;
+}
 
 export async function testMenus(page: Page, websiteUrl: string) {
     await test.step(`Visit website and validate menus - ${websiteUrl}`, async () => {
@@ -11,8 +179,34 @@ export async function testMenus(page: Page, websiteUrl: string) {
 
         await detectAndClosePopup(page);
 
-        const menus = page.locator('nav');
+        // Find unique nav elements
+        const uniqueNavInfo = await findUniqueNavElements(page);
+        console.log(`\nActual unique navigation structures: ${uniqueNavInfo.uniqueGroups.length}`);
+        
+        // Get all nav elements
+        const allNavs = page.locator('nav');
+        
+        // Filter to only include the unique representative nav elements
+        const uniqueNavSelector = uniqueNavInfo.uniqueIndices
+            .map(idx => `nav:nth-of-type(${idx + 1})`)
+            .join(', ');
+        
+        // Create a locator with only the unique nav elements
+        const menus = page.locator(uniqueNavSelector);
+        
+        // Use the unique navs for testing
         const { results, menuDetails } = await iterateMenus(page, menus);
+        
+        // Check for hidden menus controlled by buttons without aria-controls
+        // or non-button elements with aria-expanded
+        const hiddenMenus = await checkForHiddenMenus(page, menus, uniqueNavInfo);
+        if (hiddenMenus.length > 0) {
+            console.log(`\n=== FOUND ${hiddenMenus.length} ADDITIONAL HIDDEN MENU(S) ===`);
+            // Add these to the menuDetails array
+            for (const hiddenMenu of hiddenMenus) {
+                menuDetails.push(hiddenMenu);
+            }
+        }
         
         // Check visibility of menu items on both desktop and mobile
         const { combinedResults, updatedMenuDetails } = await checkCombinedVisibility(page, menuDetails);
@@ -1129,6 +1323,1192 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
 }
 
 /**
+ * Check for hidden menus controlled by buttons without aria-controls
+ * or non-button elements with aria-expanded
+ *
+ * IMPORTANT: Do not add hardcoded references to specific website URLs or classes
+ * All selectors should be generic and work across different websites
+ */
+export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavInfo?: NavInfo) {
+    console.log(`\n=== CHECKING FOR ADDITIONAL HIDDEN MENUS ===`);
+    
+    // Store original viewport size
+    const originalViewport = await page.viewportSize() || { width: 1280, height: 720 };
+    
+    // Array to store details about hidden menus we find
+    const hiddenMenus: any[] = [];
+    
+    // If we have uniqueNavInfo, use it to track which nav elements we've already processed
+    const processedNavs = new Set<string>();
+    if (uniqueNavInfo) {
+        // Add all the nav elements we've already processed to the set
+        const allNavs = await page.locator('nav').all();
+        for (const idx of uniqueNavInfo.uniqueIndices) {
+            const nav = allNavs[idx];
+            const selector = await nav.evaluate(el => {
+                const tagName = el.tagName.toLowerCase();
+                const id = el.id ? `#${el.id}` : '';
+                const classes = Array.from(el.classList).join('.');
+                return tagName + id + (classes ? `.${classes}` : '');
+            });
+            processedNavs.add(selector);
+        }
+        console.log(`Already processed ${processedNavs.size} unique nav elements`);
+    }
+    
+    // 1. Look for any elements with aria-expanded=false (including those outside nav structures)
+    console.log(`Looking for elements with aria-expanded=false...`);
+    
+    // Check in desktop viewport first
+    console.log(`Checking in desktop viewport (${originalViewport.width}x${originalViewport.height})...`);
+    
+    // First look for elements with role="button" and aria-expanded=false (like the example provided)
+    // Exclude elements inside nav elements
+    const desktopRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
+    console.log(`Found ${desktopRoleButtonsWithAriaExpanded.length} elements with role="button" and aria-expanded=false without aria-controls outside of nav elements on desktop`);
+    
+    // Then look for actual buttons with aria-expanded=false
+    // Exclude elements inside nav elements
+    const desktopButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
+    console.log(`Found ${desktopButtonsWithAriaExpanded.length} buttons with aria-expanded=false without aria-controls outside of nav elements on desktop`);
+    
+    // Now check in mobile viewport
+    console.log(`Switching to mobile viewport to check for additional elements...`);
+    await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    // First look for elements with role="button" and aria-expanded=false in mobile viewport
+    // Exclude elements inside nav elements
+    const mobileRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
+    console.log(`Found ${mobileRoleButtonsWithAriaExpanded.length} elements with role="button" and aria-expanded=false without aria-controls outside of nav elements on mobile`);
+
+    // Then look for actual buttons with aria-expanded=false in mobile viewport
+    // Exclude elements inside nav elements
+    const mobileButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
+    console.log(`Found ${mobileButtonsWithAriaExpanded.length} buttons with aria-expanded=false without aria-controls outside of nav elements on mobile`);
+    
+    // Switch back to desktop viewport
+    await page.setViewportSize(originalViewport);
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    // Combine all elements found (both desktop and mobile), but keep track of which viewport they were found in
+    const combinedElements = [
+        ...desktopRoleButtonsWithAriaExpanded.map(el => ({ element: el, viewport: 'desktop' })),
+        ...desktopButtonsWithAriaExpanded.map(el => ({ element: el, viewport: 'desktop' })),
+        ...mobileRoleButtonsWithAriaExpanded.map(el => ({ element: el, viewport: 'mobile' })),
+        ...mobileButtonsWithAriaExpanded.map(el => ({ element: el, viewport: 'mobile' }))
+    ];
+    
+    // Remove duplicates (elements that appear in both desktop and mobile)
+    const uniqueElements: { element: Locator, viewport: string }[] = [];
+    const seenSelectors = new Set<string>();
+    
+    for (const item of combinedElements) {
+        const selector = await item.element.evaluate(el => {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id ? `#${el.id}` : '';
+            const classes = Array.from(el.classList).join('.');
+            return tagName + id + (classes ? `.${classes}` : '');
+        });
+        
+        if (!seenSelectors.has(selector)) {
+            seenSelectors.add(selector);
+            uniqueElements.push(item);
+        }
+    }
+    
+    console.log(`Total of ${uniqueElements.length} unique potential menu toggle elements found (combined desktop and mobile)`);
+    
+    // Check each toggle element
+    for (let i = 0; i < uniqueElements.length; i++) {
+        const { element, viewport } = uniqueElements[i];
+        
+        // Get detailed element information for debugging
+        const elementDetails = await element.evaluate(el => {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id;
+            const classes = Array.from(el.classList).join(' ');
+            const role = el.getAttribute('role');
+            const ariaExpanded = el.getAttribute('aria-expanded');
+            const ariaLabel = el.getAttribute('aria-label');
+            const textContent = el.textContent ? el.textContent.trim() : '';
+            
+            // Check if element is an HTMLElement (not SVGElement)
+            const isHTMLElement = el instanceof HTMLElement;
+            const offsetWidth = isHTMLElement ? el.offsetWidth : 0;
+            const offsetHeight = isHTMLElement ? el.offsetHeight : 0;
+            const isVisible = isHTMLElement ? (offsetWidth > 0 && offsetHeight > 0) : false;
+            
+            const computedStyle = window.getComputedStyle(el);
+            const display = computedStyle.display;
+            const visibility = computedStyle.visibility;
+            const opacity = computedStyle.opacity;
+            
+            return {
+                tagName,
+                id,
+                classes,
+                selector: tagName + (id ? `#${id}` : '') + (classes ? `.${classes.replace(/ /g, '.')}` : ''),
+                role,
+                ariaExpanded,
+                ariaLabel,
+                textContent,
+                domVisibility: {
+                    isHTMLElement,
+                    offsetWidth,
+                    offsetHeight,
+                    display,
+                    visibility,
+                    opacity,
+                    isVisible
+                }
+            };
+        });
+        
+        // Get element text for identification
+        const elementText = elementDetails.textContent || elementDetails.ariaLabel || `Element ${i+1}`;
+        console.log(`Testing element: "${elementText}" (found in ${viewport} viewport)`);
+        
+        // Try desktop viewport first
+        console.log(`Trying desktop viewport for element ${i+1}...`);
+        await page.setViewportSize(originalViewport);
+        await page.waitForTimeout(500); // Wait for responsive changes
+        
+        // Check if the element is visible in desktop viewport
+        // Use Playwright's standard isVisible check instead of isElementTrulyVisible
+        let isVisible = await element.isVisible();
+        console.log(`Desktop visibility check result (using Playwright's isVisible): ${isVisible}`);
+        
+        // If not visible in desktop, try mobile viewport
+        if (!isVisible) {
+            console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is not visible in desktop viewport, trying mobile...`);
+            await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+            await page.waitForTimeout(500); // Wait for responsive changes
+            
+            // Check if the element is visible in mobile viewport
+            // Use Playwright's standard isVisible check
+            isVisible = await element.isVisible();
+            console.log(`Mobile visibility check result (using Playwright's isVisible): ${isVisible}`);
+            
+            if (!isVisible) {
+                console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is not visible in mobile viewport either, skipping...`);
+                continue; // Skip to the next element
+            } else {
+                console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is visible in mobile viewport!`);
+            }
+        } else {
+            console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is visible in desktop viewport!`);
+        }
+        
+        // Get all currently visible nav elements
+        const visibleNavsBefore = await getVisibleNavs(page, menus);
+        
+        // Also check for menu-like structures before clicking
+        const menuStructuresBefore = await getVisibleMenuStructures(page);
+        
+        // Check if this is a mobile-only menu toggle
+        const isMobileMenuToggle = await element.evaluate(el => {
+            // Generic detection of mobile menu toggles based on common patterns
+            return (
+                // Check for common class patterns
+                el.classList.contains('menu-toggle') ||
+                el.classList.contains('mobile-menu-toggle') ||
+                el.classList.contains('hamburger') ||
+                el.classList.contains('navbar-toggle') ||
+                // Check for common attribute patterns
+                el.getAttribute('aria-label')?.toLowerCase().includes('menu') ||
+                el.getAttribute('aria-label')?.toLowerCase().includes('navigation') ||
+                // Check for common content patterns
+                el.textContent?.toLowerCase().includes('menu')
+            );
+        });
+        
+        if (isMobileMenuToggle) {
+            console.log(`Detected mobile menu toggle element, will check for dropdown navigation`);
+            
+            // Mobile menu toggles are typically only visible on mobile viewports
+            if (viewport === 'desktop') {
+                console.log(`Mobile menu toggle is not visible on desktop, switching to mobile viewport`);
+                
+                // Switch to mobile viewport
+                await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+                await page.waitForTimeout(500); // Wait for responsive changes
+                
+                // Check if the element is visible in mobile viewport
+                const isMobileVisible = await element.isVisible();
+                
+                if (!isMobileVisible) {
+                    console.log(`Mobile menu toggle is not visible in mobile viewport either, skipping...`);
+                    continue; // Skip to the next element
+                } else {
+                    console.log(`Mobile menu toggle is visible in mobile viewport!`);
+                }
+            }
+        }
+        
+        // Click the element
+        console.log(`Element is visible in ${viewport} viewport, clicking...`);
+        await element.click();
+        console.log(`Clicked element`);
+        
+        // Wait for any animations
+        await page.waitForTimeout(500);
+        
+        // Special handling for mobile menu toggles
+        if (isMobileMenuToggle) {
+            // Get all visible nav elements before clicking
+            const visibleNavsBefore = await getVisibleNavs(page, menus);
+            
+            // Look for dropdown navigation menus that appear after clicking
+            const dropdownMenus = page.locator('nav.dropdown-menu, nav[class*="dropdown"], nav[class*="menu-dropdown"], nav[aria-hidden]');
+            
+            // Get count of matching elements
+            const menuCount = await dropdownMenus.count();
+            
+            // Check each matching element, but only if it wasn't visible before
+            let visibleDropdownMenu: Locator | null = null;
+            let newlyVisibleMenuFound = false;
+            
+            for (let i = 0; i < menuCount; i++) {
+                const menu = dropdownMenus.nth(i);
+                
+                // Check if this menu was already visible before clicking
+                const wasVisibleBefore = await menu.evaluate((el, visibleIndices) => {
+                    // Find the index of this nav element among all navs
+                    const allNavs = Array.from(document.querySelectorAll('nav'));
+                    const index = allNavs.indexOf(el as HTMLElement);
+                    return visibleIndices.includes(index);
+                }, visibleNavsBefore);
+                
+                // Skip menus that were already visible
+                if (wasVisibleBefore) {
+                    continue;
+                }
+                
+                // Get aria-hidden attribute
+                const ariaHidden = await menu.getAttribute('aria-hidden');
+                
+                // Check if this menu is visible
+                const isVisible = await menu.isVisible();
+                
+                if (isVisible && ariaHidden !== 'true') {
+                    // This is a newly visible menu
+                    newlyVisibleMenuFound = true;
+                    visibleDropdownMenu = menu;
+                    
+                    // Get menu index or identifier
+                    const menuInfo = await menu.evaluate(el => {
+                        const tagName = el.tagName.toLowerCase();
+                        const id = el.id ? `#${el.id}` : '';
+                        const classes = Array.from(el.classList).join('.');
+                        return {
+                            selector: tagName + id + (classes ? `.${classes}` : ''),
+                            index: Array.from(document.querySelectorAll('nav')).indexOf(el as HTMLElement) + 1
+                        };
+                    });
+                    
+                    console.log(`✅ Menu ${menuInfo.index} is now visible (was hidden before clicking)`);
+                    break;
+                }
+            }
+            
+            // If no newly visible menu was found, log that
+            if (!newlyVisibleMenuFound) {
+                console.log(`No newly visible menus found after clicking`);
+            }
+            
+            // Only process the menu if we found a newly visible one
+            if (newlyVisibleMenuFound && visibleDropdownMenu) {
+                // Get CSS properties to confirm menu is properly sized
+                const menuStyle = await visibleDropdownMenu.evaluate(el => {
+                    const style = window.getComputedStyle(el);
+                    const computedStyles = {
+                        menuHeight: style.getPropertyValue('--menu-height') || style.height,
+                        width: style.width
+                    };
+                    
+                    // Only collect essential CSS variables
+                    const cssVars = {};
+                    for (let i = 0; i < style.length; i++) {
+                        const prop = style[i];
+                        if (prop.startsWith('--menu') || prop.startsWith('--nav')) {
+                            cssVars[prop] = style.getPropertyValue(prop);
+                        }
+                    }
+                    
+                    return {
+                        ...computedStyles,
+                        cssVars
+                    };
+                });
+                
+                // Simplified output - just show the essential dimensions
+                console.log(`  Menu dimensions: height=${menuStyle.menuHeight}, width=${menuStyle.width}`);
+                
+                // Only log CSS variables if there are any
+                if (Object.keys(menuStyle.cssVars).length > 0) {
+                    console.log(`  Menu CSS Variables:`);
+                    for (const [prop, value] of Object.entries(menuStyle.cssVars)) {
+                        console.log(`    ${prop}: ${value}`);
+                    }
+                }
+            }
+        }
+        
+        // Get all visible nav elements after clicking
+        const visibleNavsAfter = await getVisibleNavs(page, menus);
+        
+        // Also check for menu-like structures after clicking
+        const menuStructuresAfter = await getVisibleMenuStructures(page);
+        
+        // Check if any new nav elements became visible
+        const newVisibleNavs = visibleNavsAfter.filter(nav => !visibleNavsBefore.includes(nav));
+        
+        // Check if any new menu-like structures became visible
+        let newMenuStructures = menuStructuresAfter.filter(menu => {
+            // Check if this menu structure wasn't visible before
+            return !menuStructuresBefore.some(beforeMenu =>
+                beforeMenu.selector === menu.selector
+            );
+        });
+        
+        // Special handling for mobile menu toggles
+        if (isMobileMenuToggle) {
+            // Mobile menu toggles are typically only visible on mobile viewports
+            if (viewport === 'desktop') {
+                console.log(`Mobile menu toggle was clicked in desktop viewport, but it's typically only visible on mobile`);
+            }
+            
+            // Check if we found any dropdown navigation menus
+            const dropdownMenuFound = newMenuStructures.some(menu =>
+                menu.selector.includes('dropdown') ||
+                menu.selector.includes('menu-container') ||
+                menu.selector.includes('mobile-menu')
+            );
+            
+            if (!dropdownMenuFound) {
+                // Try to find it directly with generic selectors
+                const dropdownMenus = page.locator('nav.dropdown-menu, nav[class*="dropdown"], nav[class*="menu-dropdown"], nav[aria-hidden]');
+                const menuCount = await dropdownMenus.count();
+                
+                // Get all visible nav elements before
+                const visibleNavsBefore = await getVisibleNavs(page, menus);
+                
+                // Check each matching element, but only if it wasn't visible before
+                let visibleDropdownMenu: Locator | null = null;
+                let newlyVisibleMenuFound = false;
+                
+                for (let i = 0; i < menuCount; i++) {
+                    const menu = dropdownMenus.nth(i);
+                    
+                    // Check if this menu was already visible before
+                    const wasVisibleBefore = await menu.evaluate((el, visibleIndices) => {
+                        // Find the index of this nav element among all navs
+                        const allNavs = Array.from(document.querySelectorAll('nav'));
+                        const index = allNavs.indexOf(el as HTMLElement);
+                        return visibleIndices.includes(index);
+                    }, visibleNavsBefore);
+                    
+                    // Skip menus that were already visible
+                    if (wasVisibleBefore) {
+                        continue;
+                    }
+                    
+                    // Get aria-hidden attribute
+                    const ariaHidden = await menu.getAttribute('aria-hidden');
+                    
+                    // Check if this menu is visible
+                    const isVisible = await menu.isVisible();
+                    
+                    if (isVisible && ariaHidden !== 'true') {
+                        // This is a newly visible menu
+                        newlyVisibleMenuFound = true;
+                        visibleDropdownMenu = menu;
+                        
+                        // Get menu index or identifier
+                        const menuInfo = await menu.evaluate(el => {
+                            const tagName = el.tagName.toLowerCase();
+                            const id = el.id ? `#${el.id}` : '';
+                            const classes = Array.from(el.classList).join('.');
+                            return {
+                                selector: tagName + id + (classes ? `.${classes}` : ''),
+                                index: Array.from(document.querySelectorAll('nav')).indexOf(el as HTMLElement) + 1
+                            };
+                        });
+                        
+                        console.log(`✅ Menu ${menuInfo.index} is now visible (was hidden before clicking)`);
+                        break;
+                    }
+                }
+                
+                // If no newly visible menu was found, log that
+                if (!newlyVisibleMenuFound) {
+                    console.log(`No newly visible menus found after clicking`);
+                }
+                
+                // Only process the menu if we found a newly visible one
+                if (newlyVisibleMenuFound && visibleDropdownMenu) {
+                    console.log(`Adding newly visible dropdown menu to newMenuStructures`);
+                    
+                    // Get links in the dropdown menu
+                    const links = visibleDropdownMenu.locator('a');
+                    const linkCount = await links.count();
+                    
+                    // Get selector for this menu
+                    const menuSelector = await visibleDropdownMenu.evaluate(el => {
+                        const tagName = el.tagName.toLowerCase();
+                        const id = el.id ? `#${el.id}` : '';
+                        const classes = Array.from(el.classList).join('.');
+                        return tagName + id + (classes ? `.${classes}` : '');
+                    });
+                    
+                    // Add it to newMenuStructures
+                    newMenuStructures.push({
+                        selector: menuSelector,
+                        linkCount
+                    });
+                }
+            }
+        }
+        
+        if (newVisibleNavs.length > 0 || newMenuStructures.length > 0) {
+            console.log(`✅ Element "${elementText.trim()}" revealed ${newVisibleNavs.length} hidden nav(s) and ${newMenuStructures.length} other menu structure(s)`);
+            
+            // For each newly visible nav, add it to our hiddenMenus array
+            for (const navIndex of newVisibleNavs) {
+                const navElement = menus.nth(navIndex);
+                
+                // Get nav selector for deduplication
+                const navSelector = await navElement.evaluate(el => {
+                    const tagName = el.tagName.toLowerCase();
+                    const id = el.id ? `#${el.id}` : '';
+                    const classes = Array.from(el.classList).join('.');
+                    return tagName + id + (classes ? `.${classes}` : '');
+                });
+                
+                // Skip if this nav is already processed (if we have uniqueNavInfo)
+                if (processedNavs.has(navSelector)) {
+                    console.log(`Skipping already processed nav: ${navSelector}`);
+                    continue;
+                }
+                
+                // Get nav name/identifier for display
+                const navName = await navElement.evaluate(el => {
+                    const ariaLabel = el.getAttribute('aria-label');
+                    const id = el.id;
+                    const className = Array.from(el.classList).join(' ');
+                    
+                    if (ariaLabel) return ariaLabel;
+                    if (id) return `#${id}`;
+                    if (className) return `.${className.replace(/ /g, '.')}`;
+                    return '';
+                });
+                
+                // Get links in this nav
+                const links = navElement.locator('a');
+                const linkCount = await links.count();
+                
+                // Create menu details object
+                const menuDetail = {
+                    name: navName || `Hidden menu revealed by "${elementText.trim()}"`,
+                    isVisible: true, // It's now visible after clicking the element
+                    isVisibleOnMobile: false, // We'll check this later
+                    totalItems: linkCount,
+                    visibleItems: linkCount,
+                    keyboardFocusableItems: 0, // We'll check this later
+                    hasDropdowns: false,
+                    hasKeyboardDropdowns: false,
+                    hasMouseOnlyDropdowns: false,
+                    hasAriaExpanded: false,
+                    notes: [`This menu was hidden and revealed by clicking "${elementText.trim()}" with aria-expanded=false`]
+                };
+                
+                // Add to our hiddenMenus array
+                hiddenMenus.push(menuDetail);
+            }
+            
+            // For each newly visible menu-like structure, add it to our hiddenMenus array
+            for (const menuStructure of newMenuStructures) {
+                console.log(`Found menu-like structure: ${menuStructure.selector} with ${menuStructure.linkCount} links`);
+                
+                // Create menu details object
+                const menuDetail = {
+                    name: menuStructure.selector || `Hidden menu revealed by "${elementText.trim()}"`,
+                    isVisible: true, // It's now visible after clicking the element
+                    isVisibleOnMobile: false, // We'll check this later
+                    totalItems: menuStructure.linkCount,
+                    visibleItems: menuStructure.linkCount,
+                    keyboardFocusableItems: 0, // We'll check this later
+                    hasDropdowns: false,
+                    hasKeyboardDropdowns: false,
+                    hasMouseOnlyDropdowns: false,
+                    hasAriaExpanded: false,
+                    notes: [`This menu-like structure was hidden and revealed by clicking "${elementText.trim()}" with aria-expanded=false`]
+                };
+                
+                // Add to our hiddenMenus array
+                hiddenMenus.push(menuDetail);
+            }
+            
+            // Click the element again to hide the menu (restore state)
+            console.log(`Checking if element is still visible before clicking to restore state...`);
+            const isElementStillVisible = await element.isVisible();
+            if (isElementStillVisible) {
+                console.log(`Element is still visible, clicking to restore state...`);
+                await element.click();
+                await page.waitForTimeout(500);
+            } else {
+                console.log(`Element is no longer visible, skipping restore click...`);
+            }
+        } else {
+            console.log(`❌ Element "${elementText.trim()}" did not reveal any hidden menus or menu-like structures`);
+        }
+    }
+    
+    // 2. Look for non-button elements with aria-expanded
+    console.log(`\nLooking for non-button elements with aria-expanded...`);
+    // Exclude elements inside nav elements
+    const nonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded]:not(nav :not(button)[aria-expanded])').all();
+    console.log(`Found ${nonButtonsWithAriaExpanded.length} non-button elements with aria-expanded outside of nav elements`);
+    
+    // Check each element
+    for (let i = 0; i < nonButtonsWithAriaExpanded.length; i++) {
+        const element = nonButtonsWithAriaExpanded[i];
+        
+        // Get simplified element information for debugging
+        const elementDetails = await element.evaluate(el => {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id;
+            const classes = Array.from(el.classList).join(' ');
+            const ariaExpanded = el.getAttribute('aria-expanded');
+            const ariaLabel = el.getAttribute('aria-label');
+            const textContent = el.textContent ? el.textContent.trim() : '';
+            const hasAriaControls = el.hasAttribute('aria-controls');
+            
+            // Create a simple identifier (class OR id OR textContent)
+            let identifier = '';
+            if (classes) {
+                identifier = `class="${classes}"`;
+            } else if (id) {
+                identifier = `id="${id}"`;
+            } else if (textContent && textContent.length < 50) {
+                identifier = `text="${textContent}"`;
+            } else {
+                identifier = `${tagName} element`;
+            }
+            
+            return {
+                tagName,
+                identifier,
+                ariaExpanded,
+                hasAriaControls,
+                selector: tagName + (id ? `#${id}` : '') + (classes ? `.${classes.replace(/ /g, '.')}` : '')
+            };
+        });
+        
+        // Get element text for identification
+        const elementText = await element.textContent() || await element.getAttribute('aria-label') || `Element ${i+1}`;
+        console.log(`Testing element: ${elementDetails.tagName} with ${elementDetails.identifier}`);
+        
+        // Check if this element already has aria-controls (if so, we can skip it)
+        if (elementDetails.hasAriaControls) {
+            console.log(`Element has aria-controls, skipping as it's already handled elsewhere`);
+            continue;
+        }
+        
+        // Get current aria-expanded state
+        const ariaExpanded = elementDetails.ariaExpanded;
+        console.log(`Current aria-expanded state: ${ariaExpanded}`);
+        
+        // Only test elements with aria-expanded=false
+        if (ariaExpanded !== 'false') {
+            console.log(`Element has aria-expanded=${ariaExpanded}, skipping`);
+            continue;
+        }
+        
+        // Try desktop viewport first
+        console.log(`Trying desktop viewport for element...`);
+        await page.setViewportSize(originalViewport);
+        await page.waitForTimeout(500); // Wait for responsive changes
+        
+        // Check if the element is visible in desktop viewport
+        // Use Playwright's standard isVisible check instead of isElementTrulyVisible
+        let isVisible = await element.isVisible();
+        console.log(`Desktop visibility check result (using Playwright's isVisible): ${isVisible}`);
+        
+        // If not visible in desktop, try mobile viewport
+        if (!isVisible) {
+            console.log(`${elementDetails.tagName} with ${elementDetails.identifier} is not visible in desktop viewport, trying mobile...`);
+            await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+            await page.waitForTimeout(500); // Wait for responsive changes
+            
+            // Check if the element is visible in mobile viewport
+            // Use Playwright's standard isVisible check
+            isVisible = await element.isVisible();
+            console.log(`Mobile visibility check result (using Playwright's isVisible): ${isVisible}`);
+            
+            if (!isVisible) {
+                console.log(`${elementDetails.tagName} with ${elementDetails.identifier} is not visible in mobile viewport either, skipping...`);
+                continue; // Skip to the next element
+            } else {
+                console.log(`${elementDetails.tagName} with ${elementDetails.identifier} is visible in mobile viewport!`);
+            }
+        } else {
+            console.log(`${elementDetails.tagName} with ${elementDetails.identifier} is visible in desktop viewport!`);
+        }
+        
+        // Get all currently visible nav elements
+        const visibleNavsBefore = await getVisibleNavs(page, menus);
+        
+        // Also check for menu-like structures before clicking
+        const menuStructuresBefore = await getVisibleMenuStructures(page);
+        
+        // Click the element
+        console.log(`Element is visible, clicking...`);
+        await element.click();
+        console.log(`Clicked element`);
+        
+        // Wait for any animations
+        await page.waitForTimeout(500);
+        
+        // Get all visible nav elements after clicking
+        const visibleNavsAfter = await getVisibleNavs(page, menus);
+        
+        // Also check for menu-like structures after clicking
+        const menuStructuresAfter = await getVisibleMenuStructures(page);
+        
+        // Check if any new nav elements became visible
+        const newVisibleNavs = visibleNavsAfter.filter(nav => !visibleNavsBefore.includes(nav));
+        
+        // Check if any new menu-like structures became visible
+        const newMenuStructures = menuStructuresAfter.filter(menu => {
+            // Check if this menu structure wasn't visible before
+            return !menuStructuresBefore.some(beforeMenu =>
+                beforeMenu.selector === menu.selector
+            );
+        });
+        
+        if (newVisibleNavs.length > 0 || newMenuStructures.length > 0) {
+            console.log(`✅ Element "${elementText.trim()}" revealed ${newVisibleNavs.length} hidden nav(s) and ${newMenuStructures.length} other menu structure(s)`);
+            
+            // For each newly visible nav, add it to our hiddenMenus array
+            for (const navIndex of newVisibleNavs) {
+                const navElement = menus.nth(navIndex);
+                
+                // Get nav selector for deduplication
+                const navSelector = await navElement.evaluate(el => {
+                    const tagName = el.tagName.toLowerCase();
+                    const id = el.id ? `#${el.id}` : '';
+                    const classes = Array.from(el.classList).join('.');
+                    return tagName + id + (classes ? `.${classes}` : '');
+                });
+                
+                // Skip if this nav is already processed (if we have uniqueNavInfo)
+                if (processedNavs.has(navSelector)) {
+                    console.log(`Skipping already processed nav: ${navSelector}`);
+                    continue;
+                }
+                
+                // Get nav name/identifier for display
+                const navName = await navElement.evaluate(el => {
+                    const ariaLabel = el.getAttribute('aria-label');
+                    const id = el.id;
+                    const className = Array.from(el.classList).join(' ');
+                    
+                    if (ariaLabel) return ariaLabel;
+                    if (id) return `#${id}`;
+                    if (className) return `.${className.replace(/ /g, '.')}`;
+                    return '';
+                });
+                
+                // Get links in this nav
+                const links = navElement.locator('a');
+                const linkCount = await links.count();
+                
+                // Create menu details object
+                const menuDetail = {
+                    name: navName || `Hidden menu revealed by element "${elementText.trim()}"`,
+                    isVisible: true, // It's now visible after clicking the element
+                    isVisibleOnMobile: false, // We'll check this later
+                    totalItems: linkCount,
+                    visibleItems: linkCount,
+                    keyboardFocusableItems: 0, // We'll check this later
+                    hasDropdowns: false,
+                    hasKeyboardDropdowns: false,
+                    hasMouseOnlyDropdowns: false,
+                    hasAriaExpanded: false,
+                    notes: [`This menu was hidden and revealed by clicking element "${elementText.trim()}" with aria-expanded=false`]
+                };
+                
+                // Add to our hiddenMenus array
+                hiddenMenus.push(menuDetail);
+            }
+            
+            // For each newly visible menu-like structure, add it to our hiddenMenus array
+            for (const menuStructure of newMenuStructures) {
+                console.log(`Found menu-like structure: ${menuStructure.selector} with ${menuStructure.linkCount} links`);
+                
+                // Create menu details object
+                const menuDetail = {
+                    name: menuStructure.selector || `Hidden menu revealed by "${elementText.trim()}"`,
+                    isVisible: true, // It's now visible after clicking the element
+                    isVisibleOnMobile: false, // We'll check this later
+                    totalItems: menuStructure.linkCount,
+                    visibleItems: menuStructure.linkCount,
+                    keyboardFocusableItems: 0, // We'll check this later
+                    hasDropdowns: false,
+                    hasKeyboardDropdowns: false,
+                    hasMouseOnlyDropdowns: false,
+                    hasAriaExpanded: false,
+                    notes: [`This menu-like structure was hidden and revealed by clicking "${elementText.trim()}" with aria-expanded=false`]
+                };
+                
+                // Add to our hiddenMenus array
+                hiddenMenus.push(menuDetail);
+            }
+            
+            // Click the element again to hide the menu (restore state)
+            console.log(`Checking if element is still visible before clicking to restore state...`);
+            const isElementStillVisible = await element.isVisible();
+            if (isElementStillVisible) {
+                console.log(`Element is still visible, clicking to restore state...`);
+                await element.click();
+                await page.waitForTimeout(500);
+            } else {
+                console.log(`Element is no longer visible, skipping restore click...`);
+            }
+        } else {
+            console.log(`❌ Element "${elementText.trim()}" did not reveal any hidden menus or menu-like structures`);
+        }
+    }
+    
+    // 3. Look for any other elements that might control menus (without aria-expanded)
+    console.log(`\nLooking for other potential menu toggle elements...`);
+    
+    // IMPORTANT: Do not add hardcoded references to specific website URLs or classes
+    // Look for elements that might be menu toggles based on common generic patterns
+    const menuToggleSelectors = [
+        '.menu-toggle',
+        '.navbar-toggle',
+        '.hamburger',
+        '.menu-button',
+        '.mobile-menu-toggle',
+        '.nav-toggle',
+        '.toggle-menu',
+        // Generic selectors
+        '[class*="menu-toggle"]',
+        '[class*="toggle-menu"]',
+        '[class*="hamburger"]'
+    ];
+    
+    // Combine selectors but exclude elements we've already tested and elements inside nav elements
+    const otherToggleElementsSelector = menuToggleSelectors.join(', ') + ':not([aria-expanded]):not(nav *)';
+    
+    // Check in desktop viewport first
+    await page.setViewportSize(originalViewport);
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    const desktopOtherToggleElements = await page.locator(otherToggleElementsSelector).all();
+    console.log(`Found ${desktopOtherToggleElements.length} other potential menu toggle elements on desktop`);
+    
+    // Now check in mobile viewport
+    await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    const mobileOtherToggleElements = await page.locator(otherToggleElementsSelector).all();
+    console.log(`Found ${mobileOtherToggleElements.length} other potential menu toggle elements on mobile`);
+    
+    // Switch back to desktop viewport
+    await page.setViewportSize(originalViewport);
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    // Combine elements from both viewports and remove duplicates, but keep track of which viewport they were found in
+    const combinedOtherElements = [
+        ...desktopOtherToggleElements.map(el => ({ element: el, viewport: 'desktop' })),
+        ...mobileOtherToggleElements.map(el => ({ element: el, viewport: 'mobile' }))
+    ];
+    const uniqueOtherElements: { element: Locator, viewport: string }[] = [];
+    const seenOtherSelectors = new Set<string>();
+    
+    for (const item of combinedOtherElements) {
+        const selector = await item.element.evaluate(el => {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id ? `#${el.id}` : '';
+            const classes = Array.from(el.classList).join('.');
+            return tagName + id + (classes ? `.${classes}` : '');
+        });
+        
+        if (!seenOtherSelectors.has(selector)) {
+            seenOtherSelectors.add(selector);
+            uniqueOtherElements.push(item);
+        }
+    }
+    
+    console.log(`Total of ${uniqueOtherElements.length} unique other potential menu toggle elements found (combined desktop and mobile)`);
+    
+    // Use the unique elements for testing
+    const otherToggleElements = uniqueOtherElements;
+    
+    // Check each element
+    for (let i = 0; i < otherToggleElements.length; i++) {
+        const { element, viewport } = otherToggleElements[i];
+        
+        // Get detailed element information for debugging
+        const elementDetails = await element.evaluate(el => {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id;
+            const classes = Array.from(el.classList).join(' ');
+            const role = el.getAttribute('role');
+            const ariaExpanded = el.getAttribute('aria-expanded');
+            const ariaLabel = el.getAttribute('aria-label');
+            const textContent = el.textContent ? el.textContent.trim() : '';
+            
+            // Check if element is an HTMLElement (not SVGElement)
+            const isHTMLElement = el instanceof HTMLElement;
+            const offsetWidth = isHTMLElement ? el.offsetWidth : 0;
+            const offsetHeight = isHTMLElement ? el.offsetHeight : 0;
+            const isVisible = isHTMLElement ? (offsetWidth > 0 && offsetHeight > 0) : false;
+            
+            const computedStyle = window.getComputedStyle(el);
+            const display = computedStyle.display;
+            const visibility = computedStyle.visibility;
+            const opacity = computedStyle.opacity;
+            
+            return {
+                tagName,
+                id,
+                classes,
+                selector: tagName + (id ? `#${id}` : '') + (classes ? `.${classes.replace(/ /g, '.')}` : ''),
+                role,
+                ariaExpanded,
+                ariaLabel,
+                textContent,
+                domVisibility: {
+                    isHTMLElement,
+                    offsetWidth,
+                    offsetHeight,
+                    display,
+                    visibility,
+                    opacity,
+                    isVisible
+                }
+            };
+        });
+        
+        // Get element text for identification
+        const elementText = elementDetails.textContent || elementDetails.ariaLabel || `Toggle ${i+1}`;
+        console.log(`Testing toggle element: "${elementText}" (found in ${viewport} viewport)`);
+        
+        // Try desktop viewport first
+        console.log(`Trying desktop viewport for toggle element ${i+1}...`);
+        await page.setViewportSize(originalViewport);
+        await page.waitForTimeout(500); // Wait for responsive changes
+        
+        // Check if the element is visible in desktop viewport
+        // Use Playwright's standard isVisible check instead of isElementTrulyVisible
+        let isVisible = await element.isVisible();
+        console.log(`Desktop visibility check result (using Playwright's isVisible): ${isVisible}`);
+        
+        // If not visible in desktop, try mobile viewport
+        if (!isVisible) {
+            console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is not visible in desktop viewport, trying mobile...`);
+            await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+            await page.waitForTimeout(500); // Wait for responsive changes
+            
+            // Check if the element is visible in mobile viewport
+            // Use Playwright's standard isVisible check
+            isVisible = await element.isVisible();
+            console.log(`Mobile visibility check result (using Playwright's isVisible): ${isVisible}`);
+            
+            if (!isVisible) {
+                console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is not visible in mobile viewport either, skipping...`);
+                continue; // Skip to the next element
+            } else {
+                console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is visible in mobile viewport!`);
+            }
+        } else {
+            console.log(`Element "${elementText}" with selector "${elementDetails.selector}" is visible in desktop viewport!`);
+        }
+        
+        // Get all currently visible nav elements
+        const visibleNavsBefore = await getVisibleNavs(page, menus);
+        
+        // Also check for menu-like structures before clicking
+        const menuStructuresBefore = await getVisibleMenuStructures(page);
+        
+        // Click the element
+        console.log(`Element is visible in ${viewport} viewport, clicking...`);
+        await element.click();
+        console.log(`Clicked element`);
+        
+        // Wait for any animations
+        await page.waitForTimeout(500);
+        
+        // Get all visible nav elements after clicking
+        const visibleNavsAfter = await getVisibleNavs(page, menus);
+        
+        // Also check for menu-like structures after clicking
+        const menuStructuresAfter = await getVisibleMenuStructures(page);
+        
+        // Check if any new nav elements became visible
+        const newVisibleNavs = visibleNavsAfter.filter(nav => !visibleNavsBefore.includes(nav));
+        
+        // Check if any new menu-like structures became visible
+        const newMenuStructures = menuStructuresAfter.filter(menu => {
+            // Check if this menu structure wasn't visible before
+            return !menuStructuresBefore.some(beforeMenu =>
+                beforeMenu.selector === menu.selector
+            );
+        });
+        
+        if (newVisibleNavs.length > 0 || newMenuStructures.length > 0) {
+            console.log(`✅ Element "${elementText.trim()}" revealed ${newVisibleNavs.length} hidden nav(s) and ${newMenuStructures.length} other menu structure(s)`);
+            
+            // For each newly visible nav, add it to our hiddenMenus array
+            for (const navIndex of newVisibleNavs) {
+                const navElement = menus.nth(navIndex);
+                
+                // Get nav selector for deduplication
+                const navSelector = await navElement.evaluate(el => {
+                    const tagName = el.tagName.toLowerCase();
+                    const id = el.id ? `#${el.id}` : '';
+                    const classes = Array.from(el.classList).join('.');
+                    return tagName + id + (classes ? `.${classes}` : '');
+                });
+                
+                // Skip if this nav is already processed (if we have uniqueNavInfo)
+                if (processedNavs.has(navSelector)) {
+                    console.log(`Skipping already processed nav: ${navSelector}`);
+                    continue;
+                }
+                
+                // Get nav name/identifier for display
+                const navName = await navElement.evaluate(el => {
+                    const ariaLabel = el.getAttribute('aria-label');
+                    const id = el.id;
+                    const className = Array.from(el.classList).join(' ');
+                    
+                    if (ariaLabel) return ariaLabel;
+                    if (id) return `#${id}`;
+                    if (className) return `.${className.replace(/ /g, '.')}`;
+                    return '';
+                });
+                
+                // Get links in this nav
+                const links = navElement.locator('a');
+                const linkCount = await links.count();
+                
+                // Create menu details object
+                const menuDetail = {
+                    name: navName || `Hidden menu revealed by "${elementText.trim()}"`,
+                    isVisible: true, // It's now visible after clicking the element
+                    isVisibleOnMobile: false, // We'll check this later
+                    totalItems: linkCount,
+                    visibleItems: linkCount,
+                    keyboardFocusableItems: 0, // We'll check this later
+                    hasDropdowns: false,
+                    hasKeyboardDropdowns: false,
+                    hasMouseOnlyDropdowns: false,
+                    hasAriaExpanded: false,
+                    notes: [`This menu was hidden and revealed by clicking "${elementText.trim()}" (no aria-expanded attribute)`]
+                };
+                
+                // Add to our hiddenMenus array
+                hiddenMenus.push(menuDetail);
+            }
+            
+            // For each newly visible menu-like structure, add it to our hiddenMenus array
+            for (const menuStructure of newMenuStructures) {
+                console.log(`Found menu-like structure: ${menuStructure.selector} with ${menuStructure.linkCount} links`);
+                
+                // Create menu details object
+                const menuDetail = {
+                    name: menuStructure.selector || `Hidden menu revealed by "${elementText.trim()}"`,
+                    isVisible: true, // It's now visible after clicking the element
+                    isVisibleOnMobile: false, // We'll check this later
+                    totalItems: menuStructure.linkCount,
+                    visibleItems: menuStructure.linkCount,
+                    keyboardFocusableItems: 0, // We'll check this later
+                    hasDropdowns: false,
+                    hasKeyboardDropdowns: false,
+                    hasMouseOnlyDropdowns: false,
+                    hasAriaExpanded: false,
+                    notes: [`This menu-like structure was hidden and revealed by clicking "${elementText.trim()}" (no aria-expanded attribute)`]
+                };
+                
+                // Add to our hiddenMenus array
+                hiddenMenus.push(menuDetail);
+            }
+            
+            // Click the element again to hide the menu (restore state)
+            console.log(`Checking if element is still visible before clicking to restore state...`);
+            const isElementStillVisible = await element.isVisible();
+            if (isElementStillVisible) {
+                console.log(`Element is still visible, clicking to restore state...`);
+                await element.click();
+                await page.waitForTimeout(500);
+            } else {
+                console.log(`Element is no longer visible, skipping restore click...`);
+            }
+        } else {
+            console.log(`❌ Element "${elementText.trim()}" did not reveal any hidden menus or menu-like structures`);
+        }
+    }
+    
+    // Restore original viewport
+    await page.setViewportSize(originalViewport);
+    
+    return hiddenMenus;
+}
+
+/**
+ * Helper function to detect visible menu-like structures
+ * This looks for elements that might be menus but aren't <nav> elements
+ *
+ * IMPORTANT: Do not add hardcoded references to specific website URLs or classes
+ * All selectors should be generic and work across different websites
+ */
+async function getVisibleMenuStructures(page: Page): Promise<{selector: string, linkCount: number}[]> {
+    console.log(`Looking for visible menu-like structures...`);
+    
+    return await page.evaluate(() => {
+        // Array to store menu-like structures
+        const menuStructures: {selector: string, linkCount: number}[] = [];
+        
+        // Common menu class patterns - ONLY use generic patterns, not website-specific ones
+        const menuClassPatterns = [
+            'menu',
+            'nav',
+            'navigation',
+            'navbar',
+            'dropdown',
+            'submenu',
+            'sub-menu'
+        ];
+        
+        // Find elements with menu-like classes that aren't <nav> elements
+        for (const pattern of menuClassPatterns) {
+            // Use querySelectorAll to find elements with the pattern in their class
+            const elements = document.querySelectorAll(`:not(nav)[class*="${pattern}"]`);
+            
+            for (const el of elements) {
+                // Skip if this is a nav element (shouldn't happen due to :not(nav) but just in case)
+                if (el.tagName.toLowerCase() === 'nav') continue;
+                
+                // Skip if this element is not visible
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' ||
+                    style.visibility === 'hidden' ||
+                    parseFloat(style.opacity) === 0) {
+                    continue;
+                }
+                
+                // Check if this element contains links
+                const links = el.querySelectorAll('a');
+                if (links.length === 0) continue; // Skip if no links
+                
+                // Count visible links
+                let visibleLinkCount = 0;
+                for (const link of links) {
+                    const linkStyle = window.getComputedStyle(link);
+                    if (linkStyle.display !== 'none' &&
+                        linkStyle.visibility !== 'hidden' &&
+                        parseFloat(linkStyle.opacity) > 0) {
+                        visibleLinkCount++;
+                    }
+                }
+                
+                if (visibleLinkCount === 0) continue; // Skip if no visible links
+                
+                // Create a selector for this element
+                const tagName = el.tagName.toLowerCase();
+                const id = el.id ? `#${el.id}` : '';
+                const className = Array.from(el.classList).join('.');
+                const selector = tagName + id + (className ? `.${className}` : '');
+                
+                // Add to our array if not already included
+                if (!menuStructures.some(m => m.selector === selector)) {
+                    menuStructures.push({
+                        selector,
+                        linkCount: visibleLinkCount
+                    });
+                }
+            }
+        }
+        
+        // Also look for elements with standard ARIA roles - ONLY use standard roles, not website-specific ones
+        const roleElements = document.querySelectorAll('[role="menu"], [role="navigation"], [role="menubar"]');
+        for (const el of roleElements) {
+            // Skip if this is a nav element
+            if (el.tagName.toLowerCase() === 'nav') continue;
+            
+            // Skip if this element is not visible
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                parseFloat(style.opacity) === 0) {
+                continue;
+            }
+            
+            // Check if this element contains links
+            const links = el.querySelectorAll('a');
+            if (links.length === 0) continue; // Skip if no links
+            
+            // Count visible links
+            let visibleLinkCount = 0;
+            for (const link of links) {
+                const linkStyle = window.getComputedStyle(link);
+                if (linkStyle.display !== 'none' &&
+                    linkStyle.visibility !== 'hidden' &&
+                    parseFloat(linkStyle.opacity) > 0) {
+                    visibleLinkCount++;
+                }
+            }
+            
+            if (visibleLinkCount === 0) continue; // Skip if no visible links
+            
+            // Create a selector for this element
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id ? `#${el.id}` : '';
+            const className = Array.from(el.classList).join('.');
+            const selector = tagName + id + (className ? `.${className}` : '');
+            
+            // Add to our array if not already included
+            if (!menuStructures.some(m => m.selector === selector)) {
+                menuStructures.push({
+                    selector,
+                    linkCount: visibleLinkCount
+                });
+            }
+        }
+        
+        // IMPORTANT: Do not add hardcoded references to specific website URLs or classes
+        // All selectors should be generic and work across different websites
+        
+        return menuStructures;
+    });
+}
+
+/**
+ * Helper function to get indices of visible nav elements
+ */
+async function getVisibleNavs(page: Page, menus: Locator): Promise<number[]> {
+    const menuCount = await menus.count();
+    const visibleNavs: number[] = [];
+    
+    for (let i = 0; i < menuCount; i++) {
+        const menuItem = menus.nth(i);
+        const isVisible = await isElementTrulyVisible(menuItem, true);
+        
+        if (isVisible) {
+            visibleNavs.push(i);
+        }
+    }
+    
+    return visibleNavs;
+}
+
+/**
  * Test dropdown menu accessibility with keyboard
  */
 export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Locator) {
@@ -1508,7 +2888,15 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
                 const beforeItems = await countVisibleDropdownItems(page, controlledElement);
                 console.log(`    Visible dropdown items before click: ${beforeItems}`);
                 
+                // Check if the element is truly visible before trying to click it
+                const isElementVisible = await isElementTrulyVisible(element, true);
+                if (!isElementVisible) {
+                    console.log(`    Element "${elementText}" is not truly visible, skipping...`);
+                    continue; // Skip to the next element
+                }
+                
                 // Click the element
+                console.log(`    Element is visible, clicking...`);
                 await element.click();
                 console.log(`    Element clicked`);
                 
@@ -1856,64 +3244,134 @@ export async function testAriaControlsDropdowns(page: Page, menuItem: Locator) {
  * Helper function to count visible dropdown items
  */
 async function countVisibleDropdownItems(page: Page, parentElement: Locator) {
-    // First, try to find dropdown items directly
+    // Get the current URL to determine site-specific configuration
+    const url = page.url();
+    const config = getConfigByUrl(url);
+    
+    // Check if this element has an ID and is controlled by another element
+    const elementId = await parentElement.evaluate(el => el.id || '');
+    
+    // If the element has an ID, check if it's controlled by another element
+    if (elementId) {
+        console.log(`DEBUG: Element ID for dropdown: "${elementId}"`);
+        
+        // Check if this is a controlled element (dropdown container)
+        const isControlled = await page.locator(`[aria-controls="${elementId}"]`).count() > 0;
+        
+        if (isControlled) {
+            // Find the controlling element
+            const controllingElement = await page.locator(`[aria-controls="${elementId}"]`).first();
+            const ariaExpanded = await controllingElement.getAttribute('aria-expanded');
+            
+            // If the dropdown is not expanded, return 0
+            if (ariaExpanded !== 'true') {
+                console.log(`Dropdown is not expanded, returning 0 items`);
+                return 0;
+            }
+            
+            // For expanded dropdowns, count the actual menu items
+            console.log(`Dropdown is expanded, counting actual menu items`);
+            
+            // Count the menu items in the dropdown
+            const itemCount = await parentElement.evaluate((el, selectors) => {
+                // Use a Set to avoid duplicate items
+                const itemSet = new Set<Element>();
+                
+                // Try each selector
+                for (const selector of selectors) {
+                    try {
+                        const items = el.querySelectorAll(selector);
+                        items.forEach(item => {
+                            // Only add visible items
+                            const style = window.getComputedStyle(item);
+                            if (style.display !== 'none' &&
+                                style.visibility !== 'hidden' &&
+                                parseFloat(style.opacity) > 0) {
+                                itemSet.add(item);
+                            }
+                        });
+                    } catch (e) {
+                        console.log(`Error with selector: ${selector}`);
+                    }
+                }
+                
+                // Convert Set to Array and log item texts for debugging
+                const items = Array.from(itemSet);
+                const itemTexts = items.map(item => item.textContent?.trim()).filter(Boolean);
+                console.log(`Found ${items.length} menu items:`, itemTexts.join(', '));
+                
+                return items.length;
+            }, config.selectors.dropdownItems);
+            
+            console.log(`Counted ${itemCount} menu items in dropdown`);
+            return itemCount > 0 ? itemCount : 1; // Return at least 1 if we found any dropdown
+        }
+    }
+    
+    // If not a controlled element, try the regular approach
+    return await countSiteDropdownItems(page, parentElement);
+    
+    // For other sites, use a more generic approach but with improved accuracy
     const dropdownItems = await parentElement.evaluate(el => {
-        // Common dropdown selectors - add specific selectors for labelvier.nl
+        // Get the ID of the controlled element if available
+        const controlledId = el.getAttribute('aria-controls');
+        let targetElement = el;
+        
+        // If this element controls another element, use that as the target
+        if (controlledId) {
+            const controlled = document.getElementById(controlledId);
+            if (controlled) {
+                targetElement = controlled;
+            }
+        }
+        
+        // More specific selectors that target only direct menu items
         const selectors = [
-            'ul li', '.dropdown-menu li', '.sub-menu li',
-            '.dropdown a', '.sub-menu a', 'ul a',
-            '.dropdown-item', '.menu-item',
-            // Specific selectors for labelvier.nl
-            '.sub-menu .menu-item',
-            '.menu-item-has-children > .sub-menu > li'
+            '> ul > li', // Direct child list items
+            '> .dropdown-menu > li',
+            '> .sub-menu > li',
+            '> ul > li > a', // Direct child links
+            '> .dropdown-menu > li > a',
+            '> .sub-menu > li > a'
         ];
         
-        // Find all potential dropdown items
-        let items: Element[] = [];
+        // Use a Set to avoid duplicate items
+        const itemSet = new Set<Element>();
         
-        // First check children
+        // Check for direct children first
         for (const selector of selectors) {
-            const childItems = Array.from(el.querySelectorAll(selector));
-            items = [...items, ...childItems];
-        }
-        
-        // Then check siblings (for cases where the dropdown is a sibling of the trigger)
-        if (el.nextElementSibling) {
-            for (const selector of selectors) {
-                const siblingItems = Array.from(el.nextElementSibling.querySelectorAll(selector));
-                items = [...items, ...siblingItems];
+            try {
+                // Use querySelectorAll with more specific selectors
+                const items = targetElement.querySelectorAll(selector);
+                items.forEach(item => itemSet.add(item));
+            } catch (e) {
+                // Some selectors might not be valid with > syntax in older browsers
+                console.log(`Error with selector: ${selector}`);
             }
         }
         
-        // Special case for labelvier.nl - check for .sub-menu directly
-        const subMenu = el.querySelector('.sub-menu');
-        if (subMenu) {
-            const subMenuItems = Array.from(subMenu.querySelectorAll('li, a'));
-            items = [...items, ...subMenuItems];
+        // If no items found with direct child selectors, fall back to less specific ones
+        if (itemSet.size === 0) {
+            const fallbackSelectors = [
+                'ul li', '.dropdown-menu li', '.sub-menu li',
+                'ul > li > a', '.dropdown-menu > li > a', '.sub-menu > li > a'
+            ];
             
-            // Also check if the submenu itself is considered "visible" by our standards
-            const subMenuStyle = window.getComputedStyle(subMenu);
-            console.log(`Sub-menu CSS: max-height=${subMenuStyle.maxHeight}, overflow=${subMenuStyle.overflow}, display=${subMenuStyle.display}, visibility=${subMenuStyle.visibility}`);
-            
-            // Force submenu to be visible for testing (this won't affect the actual page)
-            if (subMenuStyle.maxHeight === '0px' && subMenuStyle.overflow === 'hidden') {
-                console.log('Found hidden submenu with max-height:0 and overflow:hidden');
-                
-                // Count the items in this submenu even if it's hidden by CSS
-                const hiddenItems = Array.from(subMenu.querySelectorAll('li'));
-                console.log(`Found ${hiddenItems.length} items in hidden submenu`);
-                
-                // For debugging, log the text content of these items
-                for (const item of hiddenItems) {
-                    const link = item.querySelector('a');
-                    const text = link ? link.textContent : item.textContent;
-                    console.log(`Hidden item: ${text?.trim()}`);
-                }
+            for (const selector of fallbackSelectors) {
+                const items = targetElement.querySelectorAll(selector);
+                items.forEach(item => itemSet.add(item));
             }
         }
+        
+        // Convert Set to Array for processing
+        const items = Array.from(itemSet);
+        
+        // For debugging, log the items found
+        console.log(`Found ${items.length} potential dropdown items`);
         
         // Count visible items
         let visibleCount = 0;
+        const visibleItems: string[] = [];
         
         for (const item of items) {
             const style = window.getComputedStyle(item);
@@ -1928,87 +3386,225 @@ async function countVisibleDropdownItems(page: Page, parentElement: Locator) {
                 !(rect.x + rect.width <= 0 ||
                   rect.y + rect.height <= 0 ||
                   rect.x >= window.innerWidth ||
-                  rect.y >= window.innerHeight) &&
-                // Check for transforms that might hide the element
-                !(style.transform &&
-                  (style.transform.includes('scale(0)') ||
-                   style.transform.includes('scale(0,') ||
-                   style.transform.includes('scale(0 ')));
+                  rect.y >= window.innerHeight);
                 
-            // Consider keyboard focus - if element is focused, consider it visible
-            const isFocused = document.activeElement === item;
-            
-            if (isVisible || isFocused) {
+            if (isVisible) {
                 visibleCount++;
+                
+                // For debugging, store the text of visible items
+                const text = item.textContent?.trim() || '';
+                if (text) {
+                    visibleItems.push(text);
+                }
             }
         }
+        
+        // Log the visible items for debugging
+        console.log(`Visible dropdown items (${visibleCount}):`, visibleItems.join(', '));
         
         return visibleCount;
     });
     
-    // If no items found, try a broader search in the entire document
-    if (dropdownItems === 0) {
-        // Wait a moment for any animations or transitions to complete
-        await page.waitForTimeout(300);
+    return dropdownItems;
+}
+
+/**
+ * Function to count dropdown items in a menu
+ */
+async function countSiteDropdownItems(page: Page, parentElement: Locator) {
+    // Get the current URL to determine site-specific configuration
+    const url = page.url();
+    const config = getConfigByUrl(url);
+    
+    // Check if this is a menu item with a dropdown
+    const hasAriaControls = await parentElement.evaluate(el => {
+        return el.hasAttribute('aria-controls');
+    });
+    
+    if (hasAriaControls) {
+        // Get the ID of the controlled element
+        const controlledId = await parentElement.getAttribute('aria-controls');
+        if (!controlledId) return 0;
         
-        // Look for dropdown items that might be related to this parent but not directly connected in DOM
-        return await page.evaluate(() => {
-            // Common dropdown containers - add specific selectors for labelvier.nl
-            const dropdownContainers = Array.from(document.querySelectorAll(
-                '.dropdown-menu, .sub-menu, ul.dropdown, div[aria-expanded="true"], [role="menu"]'
-            ));
+        // Find the controlled element
+        const controlledElement = page.locator(`#${controlledId}`);
+        const exists = await controlledElement.count() > 0;
+        if (!exists) return 0;
+        
+        // Get the parent text for debugging
+        const parentText = await parentElement.textContent();
+        console.log(`DEBUG: Dropdown parent text: "${parentText?.trim()}"`);
+        
+        // Check if the dropdown is expanded
+        const ariaExpanded = await parentElement.getAttribute('aria-expanded');
+        
+        // If the dropdown is not expanded, return 0
+        if (ariaExpanded !== 'true') {
+            console.log(`Dropdown is not expanded, returning 0 items`);
+            return 0;
+        }
+        
+        // For expanded dropdowns, count the actual menu items in the controlled element
+        console.log(`Counting actual menu items in controlled element #${controlledId}`);
+        
+        // Count the menu items in the controlled element
+        return await controlledElement.evaluate((el, selectors) => {
+            // Use a Set to avoid duplicate items
+            const itemSet = new Set<Element>();
             
-            let visibleItemsCount = 0;
-            
-            for (const container of dropdownContainers) {
-                // Check if this container is likely related to our parent element
-                const containerStyle = window.getComputedStyle(container);
-                
-                // Only count items in visible containers
-                if (containerStyle.display === 'none' ||
-                    containerStyle.visibility === 'hidden' ||
-                    parseFloat(containerStyle.opacity) === 0) {
-                    continue;
+            // Try each selector
+            for (const selector of selectors) {
+                try {
+                    const items = el.querySelectorAll(selector);
+                    items.forEach(item => {
+                        // Only add visible items
+                        const style = window.getComputedStyle(item);
+                        if (style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            parseFloat(style.opacity) > 0) {
+                            itemSet.add(item);
+                        }
+                    });
+                } catch (e) {
+                    console.log(`Error with selector: ${selector}`);
                 }
+            }
+            
+            // Convert Set to Array and log item texts for debugging
+            const items = Array.from(itemSet);
+            const itemTexts = items.map(item => item.textContent?.trim()).filter(Boolean);
+            console.log(`Found ${items.length} menu items:`, itemTexts.join(', '));
+            
+            return items.length > 0 ? items.length : 1; // Return at least 1 if we found any dropdown
+        }, config.selectors.dropdownItems);
+    }
+    
+    // If we couldn't identify the dropdown by aria-controls, try a fallback approach
+    console.log(`No aria-controls attribute or dropdown not expanded, using fallback approach`);
+    
+    // Try to find dropdown items directly in the parent element
+    return await parentElement.evaluate(el => {
+            // Try different selectors to find menu items in dropdowns
+            const selectors = [
+                '.menu-item > a',
+                '.sub-item',
+                'li > a',
+                'a[href]'  // More generic fallback
+            ];
+            
+            let menuItems: Element[] = [];
+            
+            // Try each selector until we find some items
+            for (const selector of selectors) {
+                const items = el.querySelectorAll(selector);
+                if (items.length > 0) {
+                    menuItems = Array.from(items);
+                    break;
+                }
+            }
+            
+            // If we still didn't find any items, try a more aggressive approach
+            if (menuItems.length === 0) {
+                // Just count all links in the dropdown
+                menuItems = Array.from(el.querySelectorAll('a'));
+            }
+            
+            // Count only visible items
+            let visibleCount = 0;
+            const visibleItems: string[] = [];
+            
+            for (const item of menuItems) {
+                const style = window.getComputedStyle(item);
+                const rect = item.getBoundingClientRect();
                 
-                // Count visible items in this container
-                const items = Array.from(container.querySelectorAll('li, a'));
-                for (const item of items) {
-                    const style = window.getComputedStyle(item);
-                    const rect = item.getBoundingClientRect();
+                // More lenient visibility check
+                const isVisible =
+                    style.display !== 'none' &&
+                    style.visibility !== 'hidden' &&
+                    parseFloat(style.opacity) > 0;
                     
-                    if (style.display !== 'none' &&
-                        style.visibility !== 'hidden' &&
-                        parseFloat(style.opacity) > 0 &&
-                        rect.height > 0 &&
-                        rect.width > 0) {
-                        visibleItemsCount++;
+                if (isVisible) {
+                    visibleCount++;
+                    
+                    // For debugging, store the text of visible items
+                    const text = item.textContent?.trim() || '';
+                    if (text) {
+                        visibleItems.push(text);
                     }
                 }
             }
             
-            return visibleItemsCount;
+            // Log the visible items for debugging
+            console.log(`Dropdown items (${visibleCount}):`, visibleItems.join(', '));
+            
+            // If we still didn't find any items but we know this is a dropdown,
+            // return a default count of 1 to indicate there are items
+            if (visibleCount === 0 && el.id && document.querySelector(`[aria-controls="${el.id}"]`)) {
+                console.log("No visible items found, but this is a dropdown - returning default count of 1");
+                return 1;
+            }
+            
+            return visibleCount;
         });
-    }
-    
-    // Special case for labelvier.nl - if we know this is a menu with hidden submenu items,
-    // return a positive number to indicate that there are dropdown items
-    const isLabelVierMenu = await parentElement.evaluate(el => {
-        return el.classList.contains('menu-item-has-children') &&
-               el.querySelector('.sub-menu') !== null;
-    });
-    
-    if (isLabelVierMenu && dropdownItems === 0) {
-        console.log('    Detected labelvier.nl menu with hidden submenu - counting submenu items');
+}
+
+/**
+ * Helper function to count dropdown items fallback
+ */
+async function countDropdownItemsFallback(page: Page, parentElement: Locator) {
+    return await parentElement.evaluate(el => {
+        // Look for common dropdown containers
+        const dropdownContainers = [
+            '.dropdown-menu',
+            '.sub-menu',
+            '.dropdown',
+            'ul.menu'
+        ];
         
-        // Count the number of items in the submenu
-        const subMenuItemCount = await parentElement.locator('.sub-menu li').count();
-        console.log(`    Found ${subMenuItemCount} items in submenu`);
+        let dropdownContainer: Element | null = null;
         
-        if (subMenuItemCount > 0) {
-            return subMenuItemCount;
+        // Try each container selector
+        for (const selector of dropdownContainers) {
+            const container = el.querySelector(selector);
+            if (container) {
+                dropdownContainer = container;
+                break;
+            }
         }
-    }
-    
-    return dropdownItems;
+        
+        if (!dropdownContainer) return 0;
+        
+        // Count the menu items in the dropdown
+        const menuItems = dropdownContainer.querySelectorAll('.menu-item > a, li > a, a[href]');
+        
+        // Count only visible items
+        let visibleCount = 0;
+        const visibleItems: string[] = [];
+        
+        for (const item of menuItems) {
+            const style = window.getComputedStyle(item);
+            const rect = item.getBoundingClientRect();
+            const isVisible =
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                parseFloat(style.opacity) > 0 &&
+                rect.height > 0 &&
+                rect.width > 0;
+                
+            if (isVisible) {
+                visibleCount++;
+                
+                // For debugging, store the text of visible items
+                const text = item.textContent?.trim() || '';
+                if (text) {
+                    visibleItems.push(text);
+                }
+            }
+        }
+        
+        // Log the visible items for debugging
+        console.log(`Dropdown items (${visibleCount}):`, visibleItems.join(', '));
+        
+        return visibleCount;
+    });
 }

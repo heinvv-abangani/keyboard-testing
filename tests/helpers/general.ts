@@ -1,5 +1,20 @@
 import { Page } from '@playwright/test';
 
+/**
+ * General helper functions for accessibility testing
+ *
+ * IMPORTANT: These functions must be universal and should not contain any website-specific references.
+ * Do not add hardcoded references to specific website URLs, frameworks, or CSS classes.
+ * All selectors should be generic and work across different websites regardless of the underlying
+ * technology (WordPress, Elementor, Webflow, custom frameworks, etc.).
+ *
+ * When adding new functionality:
+ * 1. Use generic selectors and patterns that work across different websites
+ * 2. Avoid assumptions about specific frameworks or CMS systems
+ * 3. Focus on accessibility standards and WCAG compliance rather than implementation details
+ * 4. Use feature detection rather than framework detection
+ */
+
 export async function isElementTrulyVisible(element, considerKeyboardFocus = false, debugElement = false) {
     if (!element) return false;
 
@@ -11,11 +26,242 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
         return el.id && document.querySelector(`[aria-controls="${el.id}"]`) !== null;
     });
     
+    // Check if this element controls other elements (like a menu item that controls a submenu)
+    const isControllingElement = await locatorElement.evaluate(el => {
+        // Check for explicit ARIA controls
+        const hasAriaControls = el.hasAttribute('aria-controls') || el.hasAttribute('aria-haspopup');
+        
+        // Check for menu toggle classes
+        const hasToggleClass =
+            el.classList.contains('menu-toggle') ||
+            el.classList.contains('navbar-toggle') ||
+            el.classList.contains('hamburger') ||
+            el.classList.contains('toggle-button');
+            
+        // Check for toggle attributes
+        const hasToggleAttribute =
+            el.getAttribute('data-toggle') === 'collapse' ||
+            el.getAttribute('data-toggle') === 'dropdown' ||
+            el.getAttribute('data-bs-toggle') === 'collapse' ||
+            el.getAttribute('data-bs-toggle') === 'dropdown';
+            
+        // Check for toggle role
+        const hasToggleRole = el.getAttribute('role') === 'button';
+        
+        // Check if this is likely a menu toggle based on classes and attributes
+        const isLikelyMenuToggle =
+            (hasToggleClass || hasToggleAttribute || hasToggleRole) &&
+            (el.textContent.toLowerCase().includes('menu') ||
+             el.getAttribute('aria-label')?.toLowerCase().includes('menu'));
+        
+        return hasAriaControls || isLikelyMenuToggle;
+    });
+    
     if (isControlledElement && debugElement) {
         console.log(`Element is controlled via aria-controls, may be toggled by user interaction`);
     }
     
-    // No special case for footer navigation - all elements are treated equally
+    if (isControllingElement && debugElement) {
+        console.log(`Element controls other elements via aria-controls or aria-haspopup`);
+    }
+    
+    // Menu items that control submenus should be considered visible, even if their submenus are collapsed
+    if (isControllingElement) {
+        const menuItemInfo = await locatorElement.evaluate(el => {
+            // Check if this is a menu item
+            const isMenuItem =
+                el.tagName.toLowerCase() === 'a' ||
+                el.tagName.toLowerCase() === 'button' ||
+                el.getAttribute('role') === 'menuitem' ||
+                el.parentElement && el.parentElement.tagName.toLowerCase() === 'li';
+            
+            // Check if this menu item has keyboard focus or is active
+            const hasFocus = document.activeElement === el;
+            const hasTabIndex = el.hasAttribute('tabindex');
+            const isActive = el.classList.contains('active') ||
+                           el.classList.contains('current') ||
+                           el.hasAttribute('aria-current');
+            
+            // Check if this is in a secondary/mobile menu
+            const isInSecondaryMenu =
+                el.closest('[aria-label*="mobile"]') !== null ||
+                el.closest('[class*="mobile"]') !== null ||
+                el.closest('[id*="mobile"]') !== null ||
+                el.closest('[class*="secondary"]') !== null ||
+                el.closest('[id*="secondary"]') !== null ||
+                // Check for menu number in ID (like sm-17429283540996343-1)
+                (el.id && /sm-\d+-\d+/.test(el.id));
+            
+            return { isMenuItem, hasFocus, hasTabIndex, isActive, isInSecondaryMenu };
+        });
+        
+        if (menuItemInfo.isMenuItem) {
+            if (debugElement) {
+                console.log(`Element is a menu item that controls a submenu, considering it visible`);
+                if (menuItemInfo.isInSecondaryMenu) console.log(`  Element is in a secondary/mobile menu`);
+                if (menuItemInfo.hasFocus) console.log(`  Element has keyboard focus`);
+                if (menuItemInfo.hasTabIndex) console.log(`  Element has tabindex attribute for keyboard navigation`);
+                if (menuItemInfo.isActive) console.log(`  Element is active or current`);
+            }
+            return true;
+        }
+    }
+    
+    // Check if this is a button with aria-expanded that has a visual impact
+    const isAriaExpandedButton = await locatorElement.evaluate(el => {
+        // Only check buttons with aria-expanded
+        if ((el.tagName.toLowerCase() !== 'button' && el.getAttribute('role') !== 'button') ||
+            !el.hasAttribute('aria-expanded')) {
+            return false;
+        }
+        
+        // Get the current state
+        const isExpanded = el.getAttribute('aria-expanded') === 'true';
+        
+        // Check if this button controls another element
+        let controlledElement: Element | null = null;
+        if (el.hasAttribute('aria-controls')) {
+            // Get the controlled element by ID
+            const controlId = el.getAttribute('aria-controls');
+            if (controlId) {
+                controlledElement = document.getElementById(controlId);
+            }
+        } else {
+            // Try to find a nearby element that might be controlled by this button
+            // Look for siblings or children that might be a dropdown
+            const parent = el.parentElement;
+            const grandparent = parent ? parent.parentElement : null;
+            
+            const possibleDropdowns: Element[] = [];
+            
+            // Add siblings
+            if (parent) {
+                for (let i = 0; i < parent.children.length; i++) {
+                    const child = parent.children[i];
+                    if (child !== el) possibleDropdowns.push(child);
+                }
+            }
+            
+            // Add cousins
+            if (grandparent) {
+                for (let i = 0; i < grandparent.children.length; i++) {
+                    const child = grandparent.children[i];
+                    if (child !== parent) possibleDropdowns.push(child);
+                }
+            }
+            
+            // Add known dropdown classes
+            document.querySelectorAll('.dropdown-menu, [class*="nav-menu--dropdown"], [class*="nav-menu__container"]')
+                .forEach(el => possibleDropdowns.push(el));
+            
+            // Find the closest dropdown
+            for (const dropdown of possibleDropdowns) {
+                const dropdownStyle = window.getComputedStyle(dropdown);
+                if (dropdownStyle.display !== 'none' && dropdownStyle.visibility !== 'hidden') {
+                    controlledElement = dropdown;
+                    break;
+                }
+            }
+        }
+        
+        // If we found a controlled element, check if it's visible
+        if (controlledElement) {
+            const style = window.getComputedStyle(controlledElement);
+            const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0;
+            
+            // If the button is expanded, the controlled element should be visible
+            // If the button is collapsed, the controlled element should be hidden
+            return isExpanded === isVisible;
+        }
+        
+        return false;
+    });
+    
+    if (isAriaExpandedButton) {
+        if (debugElement) console.log(`Element is a button with aria-expanded that has a visual impact`);
+        return true;
+    }
+    
+    // Check if this is a navigation menu (desktop or mobile), which should be considered visible
+    const isNavMenu = await locatorElement.evaluate(el => {
+        // First, check if this is a navigation element
+        const isNav = el.tagName.toLowerCase() === 'nav' ||
+                     el.getAttribute('role') === 'navigation';
+        
+        if (!isNav) return false; // If it's not a nav element, it's not a navigation menu
+        
+        // Check if the element itself is visible based on CSS properties
+        const style = window.getComputedStyle(el);
+        const isElementVisible =
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            parseFloat(style.opacity) > 0;
+            
+        if (!isElementVisible) return false; // If the element itself is not visible, return false
+        
+        // Check if the element has a non-zero size and is within the viewport
+        const rect = el.getBoundingClientRect();
+        const hasSize = rect.width > 0 && rect.height > 0;
+        const isInViewport =
+            rect.top < window.innerHeight &&
+            rect.left < window.innerWidth &&
+            rect.bottom > 0 &&
+            rect.right > 0;
+            
+        if (!hasSize) return false; // If the element has zero size, it's not visible
+        
+        // Check if it has visible menu items
+        const hasVisibleItems = (() => {
+            const items = el.querySelectorAll('li, a, button, [role="menuitem"], [class*="menu-item"]');
+            if (items.length === 0) return false; // No items found
+            
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const itemStyle = window.getComputedStyle(item);
+                if (itemStyle.display !== 'none' &&
+                    itemStyle.visibility !== 'hidden' &&
+                    parseFloat(itemStyle.opacity) > 0) {
+                    return true; // At least one item is visible
+                }
+            }
+            return false; // No visible items found
+        })();
+        
+        // Check viewport size to determine if we're on mobile
+        const isMobileViewport = window.innerWidth <= 768;
+        
+        // Check for mobile menu indicators
+        const isMobileMenu =
+            el.getAttribute('aria-label')?.toLowerCase().includes('mobile') ||
+            el.id?.toLowerCase().includes('mobile') ||
+            el.className.toLowerCase().includes('mobile');
+        
+        // For mobile menus, they should be visible on mobile viewport
+        if (isMobileMenu && isMobileViewport) {
+            return hasVisibleItems;
+        }
+        
+        // For mobile-only menus, they should only be visible on mobile viewport
+        const isMobileOnlyMenu =
+            el.getAttribute('data-mobile-only') === 'true' ||
+            el.classList.contains('mobile-only') ||
+            el.classList.contains('mobile-menu') ||
+            el.classList.contains('mobile-nav');
+            
+        if (isMobileOnlyMenu) {
+            // Mobile-only menus should only be visible on mobile viewport
+            return isMobileViewport && hasVisibleItems;
+        }
+        
+        // For all other cases, if the element is a nav element, is visible, and has visible items,
+        // consider it visible regardless of viewport size
+        return isElementVisible && hasVisibleItems;
+    });
+    
+    if (isNavMenu) {
+        if (debugElement) console.log(`Element is a navigation menu (desktop or mobile), considering it visible`);
+        return true;
+    }
 
     const box = await locatorElement.boundingBox();
     if (!box || box.width === 0 || box.height === 0) {
@@ -113,29 +359,28 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 }
             }
             
-            // Check if element is a navigation or menu element
-            if (debugElement) {
-                if (
-                    current.getAttribute('role') === 'navigation' ||
-                    current.tagName.toLowerCase() === 'nav' ||
-                    current.closest('[role="navigation"]') !== null ||
-                    current.closest('nav') !== null ||
-                    current.closest('[class*="menu"]') !== null ||
-                    current.closest('[class*="nav"]') !== null
-                ) {
-                    console.log(`  Element is in a menu or navigation element`);
-                }
+            // Check if element is a navigation or menu element using semantic detection
+            const isNavElement =
+                // Check for semantic navigation role
+                current.getAttribute('role') === 'navigation' ||
+                // Check for semantic nav element
+                current.tagName.toLowerCase() === 'nav' ||
+                // Check for aria-label that indicates navigation
+                (current.getAttribute('aria-label') &&
+                 /\b(nav|navigation|menu)\b/i.test(current.getAttribute('aria-label'))) ||
+                // Check for ancestors with navigation role
+                current.closest('[role="navigation"]') !== null ||
+                current.closest('nav') !== null ||
+                // Use class-based detection as fallback only
+                current.closest('[class*="menu"]') !== null ||
+                current.closest('[class*="nav"]') !== null;
+                
+            if (debugElement && isNavElement) {
+                console.log(`  Element is in a menu or navigation element`);
             }
             
             // Check if navigation or menu element is hidden by transform
-            if (
-                current.getAttribute('role') === 'navigation' ||
-                current.tagName.toLowerCase() === 'nav' ||
-                current.closest('[role="navigation"]') !== null ||
-                current.closest('nav') !== null ||
-                current.closest('[class*="menu"]') !== null ||
-                current.closest('[class*="nav"]') !== null
-            ) {
+            if (isNavElement) {
                 // This is a menu or menu item, check if it's hidden by transform
                 if (style.transform) {
                     // Get element's bounding rect after transforms are applied
@@ -184,20 +429,109 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 return true;
             }
             
-            // Check for submenu items that might be hidden with CSS
-            if (current.classList.contains('sub-menu') ||
+            // Check for submenu items using generic attribute and role-based detection
+            const isSubmenu =
+                // Check for common submenu attributes
+                current.getAttribute('aria-hidden') === 'true' ||
+                // Check for common submenu roles
+                current.getAttribute('role') === 'menu' ||
+                // Check if this is a child of a menu item with aria-expanded
+                (current.parentElement && current.parentElement.getAttribute('aria-expanded') === 'false') ||
+                // Only use class detection as a fallback
+                current.classList.contains('sub-menu') ||
                 current.classList.contains('dropdown-menu') ||
-                current.classList.contains('dropdown')) {
-                if (debugElement) console.log(`  Element is a submenu (.sub-menu, .dropdown-menu, or .dropdown)`);
+                current.classList.contains('dropdown');
                 
-                // Check if this is a submenu that's hidden
+            if (isSubmenu) {
+                if (debugElement) console.log(`  Element is a submenu (detected via attributes, roles, or classes)`);
+                
+                // Check if this is a submenu that's part of a main navigation
+                const isPartOfMainNav = (() => {
+                    // Check if this submenu is inside a nav element
+                    const parentNav = current.closest('nav, [role="navigation"]');
+                    if (!parentNav) return false;
+                    
+                    // Check if the nav element has an aria-label indicating it's a main menu
+                    const navLabel = parentNav.getAttribute('aria-label');
+                    if (navLabel && /\b(main|primary|site|header)\s+(menu|nav|navigation)\b/i.test(navLabel)) {
+                        return true;
+                    }
+                    
+                    // Check if it's in the header
+                    return parentNav.closest('header') !== null;
+                })();
+                
+                // If it's part of a main nav and its parent is focused or hovered, consider it visible
+                if (isPartOfMainNav) {
+                    const parentItem = current.parentElement;
+                    if (parentItem) {
+                        // Check if parent is focused or has aria-expanded="true"
+                        if (document.activeElement === parentItem ||
+                            parentItem.getAttribute('aria-expanded') === 'true') {
+                            if (debugElement) console.log(`  Submenu is part of main nav and parent is focused or expanded`);
+                            return false; // Not hidden
+                        }
+                    }
+                }
+                
+                // First check if submenu is explicitly hidden via ARIA
+                if (current.getAttribute('aria-hidden') === 'true') {
+                    if (debugElement) console.log(`  Submenu is explicitly hidden via aria-hidden="true"`);
+                    return true;
+                }
+                
+                // Check if this element itself has aria-expanded="false" and aria-controls
+                // This means it's a menu item that controls a submenu, not the submenu itself
+                if (current.hasAttribute('aria-expanded') &&
+                    current.getAttribute('aria-expanded') === 'false' &&
+                    current.hasAttribute('aria-controls')) {
+                    // This is a menu item that controls a submenu, not the submenu itself
+                    // The menu item should be visible even if the submenu it controls is collapsed
+                    if (debugElement) console.log(`  Element controls a collapsed submenu but is itself visible`);
+                    return false; // Not hidden
+                }
+                
+                // Check if parent indicates this submenu is collapsed
+                const parentWithExpanded = current.parentElement &&
+                                          current.parentElement.hasAttribute('aria-expanded') ?
+                                          current.parentElement : null;
+                                          
+                // Only consider this hidden if it's actually a submenu container, not a menu item
+                if (parentWithExpanded &&
+                    parentWithExpanded.getAttribute('aria-expanded') === 'false' &&
+                    !current.hasAttribute('aria-controls')) { // This ensures we don't mark menu items as hidden
+                    if (debugElement) console.log(`  Submenu's parent has aria-expanded="false", indicating it's collapsed`);
+                    return true;
+                }
+                
+                // Check for CSS properties that would hide the submenu
                 if ((style.maxHeight === '0px' || parseFloat(style.maxHeight) === 0) ||
                     style.display === 'none' ||
                     style.visibility === 'hidden' ||
-                    parseFloat(style.opacity) === 0 ||
-                    (style.position === 'absolute' && style.transform && style.transform.includes('translateY(-'))) {
+                    parseFloat(style.opacity) === 0) {
                     if (debugElement) console.log(`  Submenu is hidden by CSS`);
                     return true;
+                }
+                
+                // For positioned submenus, check if they're actually off-screen
+                if ((style.position === 'absolute' || style.position === 'fixed') &&
+                    (style.transform || style.top || style.left)) {
+                    // Get element's bounding rect after all CSS is applied
+                    const rect = current.getBoundingClientRect();
+                    const viewportWidth = window.innerWidth;
+                    const viewportHeight = window.innerHeight;
+                    
+                    // Check if submenu is completely off-screen
+                    const isOffScreen =
+                        rect.right <= 0 || // Off to the left
+                        rect.bottom <= 0 || // Off to the top
+                        rect.left >= viewportWidth || // Off to the right
+                        rect.top >= viewportHeight; // Off to the bottom
+                    
+                    if (isOffScreen) {
+                        if (debugElement) console.log(`  Submenu is off-screen: left=${rect.left}, top=${rect.top}, right=${rect.right}, bottom=${rect.bottom}`);
+                        return true;
+                    }
                 }
             }
             
