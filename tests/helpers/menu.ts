@@ -25,6 +25,69 @@ enum MenuType {
     ToggleBasedDropdownMenu = "ToggleBasedDropdownMenu"
 }
 
+// Define toggle fingerprint interface
+interface ToggleFingerprint {
+    toggleId: string;
+    name: string;
+    
+    // Basic selector information
+    tagName: string;
+    id: string;
+    classes: string;
+    
+    // Content information
+    text: string;
+    iconType: string; // e.g., "hamburger", "arrow", "plus", etc.
+    
+    // Structure information
+    parentId: string;
+    parentClass: string;
+    
+    // Style information
+    display: string;
+    visibility: string;
+    position: string;
+    
+    // Visibility on different devices
+    isVisibleDesktop: boolean;
+    isVisibleMobile: boolean;
+    
+    // Accessibility attributes
+    ariaAttributes: {
+        hasAriaExpanded: boolean;
+        ariaExpandedValue: string;
+        hasAriaControls: boolean;
+        ariaControlsValue: string;
+        hasAriaLabel: boolean;
+        ariaLabelText: string;
+        hasAriaHidden: boolean;
+        hasAriaPressed: boolean;
+        hasAriaPopup: boolean;
+    };
+    
+    // Interaction behavior
+    interactionBehavior: {
+        respondsToEnter: boolean;
+        respondsToSpace: boolean;
+        respondsToClick: boolean;
+        respondsToHover: boolean;
+        togglesOnFocus: boolean;
+        respondsToTap: boolean;
+    };
+    
+    // Controlled menu information
+    controlledMenu: {
+        menuId: string;
+        menuType: string;
+        isVisible: boolean;
+        menuTypeMobile: string;
+        isVisibleMobile: boolean;
+    };
+    
+    // Notes about the toggle
+    notes: string[];
+}
+
 // Define view-specific information with expanded properties
 interface MenuView {
     menuType: MenuType;
@@ -40,6 +103,7 @@ interface MenuView {
 interface NavFingerprint {
     menuId: string;
     name: string;
+    toggleId: string; // ID of the toggle element that controls this menu
     
     // View-specific information for desktop and mobile
     view: {
@@ -76,6 +140,7 @@ interface NavFingerprint {
         hasAriaLabelledBy: boolean;
         hasRole: boolean;
         roleValue: string;
+        hasAriaPopup: boolean;
     };
     
     // Interaction behavior for desktop
@@ -127,10 +192,246 @@ interface NavInfo {
 }
 
 /**
+ * Find toggle elements that control menus
+ */
+async function findToggleElements(page: Page): Promise<any> {
+    console.log("\n=== CHECKING FOR TOGGLE ELEMENTS ===");
+    
+    const toggleInfo = await page.evaluate(() => {
+        const toggleElements = Array.from(document.querySelectorAll(
+            'button[aria-expanded], [role="button"][aria-expanded], a[aria-expanded], ' +
+            'button[aria-controls], [role="button"][aria-controls], a[aria-controls], ' +
+            '.hamburger, .menu-toggle, .navbar-toggle'
+        ));
+        const toggleDetails: any[] = [];
+
+        toggleElements.forEach((toggle, index) => {
+            // Assign a unique data-toggle-id if not already set
+            if (!toggle.hasAttribute('data-toggle-id')) {
+                toggle.setAttribute('data-toggle-id', `toggle-${index + 1}`);
+            }
+        });
+        
+        for (const toggle of toggleElements) {
+            // Function to determine icon type
+            function determineIconType(element: Element): string {
+                const classes = Array.from(element.classList);
+                const iconElement = element.querySelector('i, svg, img');
+                
+                if (classes.some(c => c.includes('hamburger') || c.includes('burger'))) {
+                    return 'hamburger';
+                } else if (classes.some(c => c.includes('arrow'))) {
+                    return 'arrow';
+                } else if (classes.some(c => c.includes('plus') || c.includes('minus'))) {
+                    return 'plus-minus';
+                } else if (iconElement) {
+                    const iconClasses = Array.from(iconElement.classList);
+                    if (iconClasses.some(c => c.includes('bars') || c.includes('hamburger'))) {
+                        return 'hamburger';
+                    } else if (iconClasses.some(c => c.includes('arrow'))) {
+                        return 'arrow';
+                    } else if (iconClasses.some(c => c.includes('plus') || c.includes('minus'))) {
+                        return 'plus-minus';
+                    }
+                }
+                
+                return 'unknown';
+            }
+            
+            // Create a unique fingerprint for each toggle element
+            const fingerprint = {
+                toggleId: (toggle as HTMLElement).dataset.toggleId,
+                name: toggle.getAttribute('aria-label') || toggle.textContent?.trim() || `Toggle ${(toggle as HTMLElement).dataset.toggleId}`,
+                
+                // Basic selector information
+                tagName: toggle.tagName.toLowerCase(),
+                id: toggle.id,
+                classes: Array.from(toggle.classList).join(' '),
+                
+                // Content information
+                text: toggle.textContent?.trim() || '',
+                iconType: determineIconType(toggle),
+                
+                // Structure information
+                parentId: toggle.parentElement?.id || '',
+                parentClass: toggle.parentElement?.className || '',
+                
+                // Style information
+                display: window.getComputedStyle(toggle).display,
+                visibility: window.getComputedStyle(toggle).visibility,
+                position: window.getComputedStyle(toggle).position,
+                
+                // Visibility on different devices
+                isVisibleDesktop: window.getComputedStyle(toggle).display !== 'none' && window.getComputedStyle(toggle).visibility !== 'hidden',
+                isVisibleMobile: false, // Will be determined during mobile testing
+                
+                // Accessibility attributes
+                ariaAttributes: {
+                    hasAriaExpanded: toggle.hasAttribute('aria-expanded'),
+                    ariaExpandedValue: toggle.getAttribute('aria-expanded') || '',
+                    hasAriaControls: toggle.hasAttribute('aria-controls'),
+                    ariaControlsValue: toggle.getAttribute('aria-controls') || '',
+                    hasAriaLabel: toggle.hasAttribute('aria-label'),
+                    ariaLabelText: toggle.getAttribute('aria-label') || '',
+                    hasAriaHidden: toggle.hasAttribute('aria-hidden'),
+                    hasAriaPressed: toggle.hasAttribute('aria-pressed'),
+                    hasAriaPopup: toggle.hasAttribute('aria-haspopup')
+                },
+                
+                // Interaction behavior (will be determined during testing)
+                interactionBehavior: {
+                    respondsToEnter: false,
+                    respondsToSpace: false,
+                    respondsToClick: false,
+                    respondsToHover: false,
+                    togglesOnFocus: false,
+                    respondsToTap: false
+                },
+                
+                // Controlled menu information
+                controlledMenu: {
+                    menuId: toggle.getAttribute('aria-controls') || '',
+                    menuType: '',
+                    isVisible: false,
+                    menuTypeMobile: '',
+                    isVisibleMobile: false
+                },
+                
+                // Notes
+                notes: []
+            };
+            
+            // Create a simple selector for identification
+            const selector = `${fingerprint.tagName}${fingerprint.id ? '#'+fingerprint.id : ''}${fingerprint.classes ? '.'+fingerprint.classes.replace(/ /g, '.') : ''}`;
+            
+            toggleDetails.push({
+                selector,
+                fingerprint,
+                element: toggle
+            });
+        }
+        
+        return {
+            total: toggleElements.length,
+            toggleDetails: toggleDetails,
+            toggleIds: toggleDetails.map(t => t.fingerprint.toggleId)
+        };
+    });
+    
+    console.log(`Found ${toggleInfo.total} toggle elements`);
+    
+    for (let i = 0; i < toggleInfo.toggleDetails.length; i++) {
+        const toggle = toggleInfo.toggleDetails[i];
+        console.log(`\nToggle ${i + 1} (ID: ${toggle.fingerprint.toggleId}):`);
+        console.log(`  - Element: ${toggle.selector}`);
+        console.log(`  - Text: "${toggle.fingerprint.text}"`);
+        
+        if (toggle.fingerprint.ariaAttributes.hasAriaExpanded) {
+            console.log(`  - aria-expanded: ${toggle.fingerprint.ariaAttributes.ariaExpandedValue}`);
+        }
+        
+        if (toggle.fingerprint.ariaAttributes.hasAriaControls) {
+            console.log(`  - aria-controls: ${toggle.fingerprint.ariaAttributes.ariaControlsValue}`);
+        }
+    }
+    
+    return toggleInfo;
+}
+
+/**
+ * Test toggle element accessibility
+ */
+async function testToggleAccessibility(page: Page, toggleInfo: any) {
+    console.log("\n=== TESTING TOGGLE ACCESSIBILITY ===");
+    
+    for (let i = 0; i < toggleInfo.toggleDetails.length; i++) {
+        const toggle = toggleInfo.toggleDetails[i];
+        console.log(`\nTesting Toggle ${i + 1} (ID: ${toggle.fingerprint.toggleId}):`);
+        
+        // Get the toggle element
+        const toggleElement = page.locator(`[data-toggle-id="${toggle.fingerprint.toggleId}"]`);
+        const count = await toggleElement.count();
+        
+        if (count === 0) {
+            console.log(`  ❌ Toggle element not found`);
+            continue;
+        }
+        
+        // Test keyboard accessibility
+        console.log(`  Testing keyboard accessibility:`);
+        
+        // Focus the element
+        await toggleElement.focus();
+        console.log(`  - Element focused`);
+        
+        // Test Enter key
+        const beforeEnter = await page.evaluate(() => {
+            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+            return expandedElements.length;
+        });
+        
+        await page.keyboard.press('Enter');
+        
+        const afterEnter = await page.evaluate(() => {
+            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+            return expandedElements.length;
+        });
+        
+        const respondsToEnter = afterEnter !== beforeEnter;
+        toggle.fingerprint.interactionBehavior.respondsToEnter = respondsToEnter;
+        console.log(`  - Responds to Enter key: ${respondsToEnter ? '✅ Yes' : '❌ No'}`);
+        
+        // Reset state if needed
+        if (respondsToEnter) {
+            await page.keyboard.press('Enter');
+        }
+        
+        // Test Space key
+        const beforeSpace = await page.evaluate(() => {
+            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+            return expandedElements.length;
+        });
+        
+        await page.keyboard.press('Space');
+        
+        const afterSpace = await page.evaluate(() => {
+            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+            return expandedElements.length;
+        });
+        
+        const respondsToSpace = afterSpace !== beforeSpace;
+        toggle.fingerprint.interactionBehavior.respondsToSpace = respondsToSpace;
+        console.log(`  - Responds to Space key: ${respondsToSpace ? '✅ Yes' : '❌ No'}`);
+        
+        // Test mouse click
+        await toggleElement.click();
+        
+        const afterClick = await page.evaluate(() => {
+            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+            return expandedElements.length;
+        });
+        
+        const respondsToClick = afterClick !== afterSpace;
+        toggle.fingerprint.interactionBehavior.respondsToClick = respondsToClick;
+        console.log(`  - Responds to mouse click: ${respondsToClick ? '✅ Yes' : '❌ No'}`);
+        
+        // Overall accessibility evaluation
+        const isAccessible = respondsToEnter || respondsToSpace;
+        console.log(`  Overall keyboard accessibility: ${isAccessible ? '✅ PASS' : '❌ FAIL'}`);
+        
+        if (!isAccessible) {
+            toggle.fingerprint.notes.push("Toggle is not keyboard accessible");
+        }
+    }
+    
+    return toggleInfo;
+}
+
+/**
  * Find unique nav elements by comparing their content and structure
  */
 async function findUniqueNavElements(page: Page): Promise<NavInfo> {
-    console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS ===");
+    console.log("\n=== CHECKING FOR UNIQUE VISIBLE NAV ELEMENTS ===");
     
     const navInfo = await page.evaluate(() => {
         const navElements = Array.from(document.querySelectorAll('nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'));
@@ -201,6 +502,7 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
                 // Basic selector information
                 menuId: (nav as HTMLElement).dataset.menuId,
                 name: nav.getAttribute('aria-label') || nav.id || `Menu ${(nav as HTMLElement).dataset.menuId}`,
+                toggleId: '', // Will be set if this menu is controlled by a toggle
                 
                 // View-specific information for desktop and mobile
                 view: {
@@ -254,7 +556,8 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
                     ariaLabelText: nav.getAttribute('aria-label') || '',
                     hasAriaLabelledBy: nav.hasAttribute('aria-labelledby'),
                     hasRole: nav.hasAttribute('role'),
-                    roleValue: nav.getAttribute('role') || ''
+                    roleValue: nav.getAttribute('role') || '',
+                    hasAriaPopup: nav.querySelector('[aria-haspopup]') !== null
                 },
                 
                 // Interaction behavior for desktop
@@ -367,7 +670,7 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
     });
     
     // Add view-specific information to the log output
-    console.log("\n=== MENU TYPES DETECTED ===");
+    console.log("\n=== VISIBLE MENU TYPES DETECTED ===");
     for (let i = 0; i < navInfo.menuIds.length; i++) {
         const menuId = navInfo.menuIds[i];
         const fingerprint = navInfo.fingerprints[i];
@@ -401,6 +704,48 @@ export async function testMenus(page: Page, websiteUrl: string) {
         // Find unique nav elements
         const uniqueNavInfo = await findUniqueNavElements(page);
         console.log(`\nActual unique navigation structures: ${uniqueNavInfo.uniqueGroups.length}`);
+        console.log(`\n=== FOUND ${uniqueNavInfo.uniqueGroups.length} VISIBLE MENU(S) ===`);
+        
+        // Find toggle elements
+        const toggleInfo = await findToggleElements(page);
+        console.log(`\n=== FOUND ${toggleInfo.total} TOGGLE ELEMENT(S) ===`);
+        
+        // Connect toggles to menus
+        if (toggleInfo.total > 0 && uniqueNavInfo.fingerprints) {
+            console.log(`\n=== CONNECTING TOGGLES TO MENUS ===`);
+            
+            // Test toggle accessibility
+            await testToggleAccessibility(page, toggleInfo);
+            
+            for (const toggle of toggleInfo.toggleDetails) {
+                if (toggle.fingerprint.ariaAttributes.hasAriaControls) {
+                    const controlledId = toggle.fingerprint.ariaAttributes.ariaControlsValue;
+                    
+                    // Find the menu with this ID
+                    for (let i = 0; i < uniqueNavInfo.fingerprints.length; i++) {
+                        const menu = uniqueNavInfo.fingerprints[i];
+                        
+                        if (menu.id === controlledId || menu.menuId === controlledId) {
+                            // Connect the toggle to the menu
+                            menu.toggleId = toggle.fingerprint.toggleId;
+                            
+                            // Update the toggle's controlled menu information
+                            toggle.fingerprint.controlledMenu.menuId = menu.menuId;
+                            toggle.fingerprint.controlledMenu.menuType = menu.view.desktop.menuType;
+                            toggle.fingerprint.controlledMenu.isVisible = menu.view.desktop.visibility;
+                            toggle.fingerprint.controlledMenu.menuTypeMobile = menu.view.mobile.menuType;
+                            toggle.fingerprint.controlledMenu.isVisibleMobile = menu.view.mobile.visibility;
+                            
+                            console.log(`Connected Toggle ${toggle.fingerprint.toggleId} to Menu ${menu.menuId}`);
+                            
+                            // Add notes
+                            menu.notes.push(`This menu is controlled by toggle element "${toggle.fingerprint.toggleId}" via aria-controls`);
+                            toggle.fingerprint.notes.push(`This toggle controls menu "${menu.menuId}" via aria-controls`);
+                        }
+                    }
+                }
+            }
+        }
         
         // Get all nav elements
         const allNavs = page.locator('nav');
