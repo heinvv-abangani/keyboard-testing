@@ -218,7 +218,7 @@ export async function testMenus(page: Page, websiteUrl: string) {
         }
         
         // Check visibility of menu items on both desktop and mobile
-        const { combinedResults, updatedMenuDetails } = await checkCombinedVisibility(page, menuDetails, menuSelectors);
+        const { combinedResults, updatedMenuDetails } = await checkCombinedVisibility(page, menuDetails);
         
         // First, identify which menus are controlled by other menus
         const controlledMenuMap = new Map();
@@ -3994,100 +3994,4 @@ async function countVisibleItemsWithDropdowns(page: Page, menuItem: Locator, men
     }
     
     return totalVisibleCount;
-}
-
-/**
- * Find potential toggle elements for a menu
- */
-async function findToggleElementsForMenu(page: Page, menuItem: Locator): Promise<Locator[]> {
-    console.log(`Looking for toggle elements for menu...`);
-    
-    // Get menu ID and classes for targeting
-    const menuInfo = await menuItem.first().evaluate(el => {
-        return {
-            id: el.id,
-            classes: Array.from(el.classList),
-            selector: el.tagName.toLowerCase() +
-                     (el.id ? `#${el.id}` : '') +
-                     (el.classList.length > 0 ? `.${Array.from(el.classList).join('.')}` : '')
-        };
-    });
-    
-    const toggleElements: Locator[] = [];
-    
-    // 1. Look for elements with aria-controls that target this menu
-    if (menuInfo.id) {
-        const ariaControlsSelector = `[aria-controls="${menuInfo.id}"]`;
-        const ariaControlsElements = page.locator(ariaControlsSelector);
-        const count = await ariaControlsElements.count();
-        
-        if (count > 0) {
-            console.log(`Found ${count} elements with aria-controls="${menuInfo.id}"`);
-            toggleElements.push(ariaControlsElements);
-        }
-    }
-    
-    // 2. Look for elements with aria-expanded that might control this menu
-    const ariaExpandedElements = page.locator('button[aria-expanded], [role="button"][aria-expanded]');
-    const expandedCount = await ariaExpandedElements.count();
-    
-    if (expandedCount > 0) {
-        console.log(`Found ${expandedCount} elements with aria-expanded`);
-        toggleElements.push(ariaExpandedElements);
-    }
-    
-    // 3. Look for elements with common toggle classes
-    const toggleClassSelectors = [
-        '.menu-toggle',
-        '.navbar-toggle',
-        '.hamburger',
-        '.menu-button',
-        '.mobile-menu-toggle',
-        '.nav-toggle',
-        '.toggle-menu',
-        '[class*="menu-toggle"]',
-        '[class*="toggle-menu"]',
-        '[class*="hamburger"]'
-    ];
-    
-    for (const selector of toggleClassSelectors) {
-        const toggleClassElements = page.locator(selector);
-        const count = await toggleClassElements.count();
-        
-        if (count > 0) {
-            console.log(`Found ${count} elements with selector: ${selector}`);
-            toggleElements.push(toggleClassElements);
-        }
-    }
-    
-    // 4. Look for elements with common toggle attributes
-    const toggleAttributeSelectors = [
-        '[data-toggle="collapse"]',
-        '[data-toggle="dropdown"]',
-        '[data-bs-toggle="collapse"]',
-        '[data-bs-toggle="dropdown"]'
-    ];
-    
-    for (const selector of toggleAttributeSelectors) {
-        const toggleAttributeElements = page.locator(selector);
-        const count = await toggleAttributeElements.count();
-        
-        if (count > 0) {
-            console.log(`Found ${count} elements with selector: ${selector}`);
-            toggleElements.push(toggleAttributeElements);
-        }
-    }
-    
-    // Flatten the array of locators into an array of individual elements
-    const allToggleElements: Locator[] = [];
-    
-    for (const locator of toggleElements) {
-        const count = await locator.count();
-        for (let i = 0; i < count; i++) {
-            allToggleElements.push(locator.nth(i));
-        }
-    }
-    
-    console.log(`Found ${allToggleElements.length} total potential toggle elements`);
-    return allToggleElements;
 }
