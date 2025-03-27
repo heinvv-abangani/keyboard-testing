@@ -19,6 +19,7 @@ import { getConfigByUrl } from "../config";
  */
 // Define types for the nav element fingerprint and group
 interface NavFingerprint {
+    menuId: string;
     tagName: string;
     id: string;
     classes: string;
@@ -59,13 +60,21 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
     console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS ===");
     
     const navInfo = await page.evaluate(() => {
-        const navElements = Array.from(document.querySelectorAll('nav'));
+        const navElements = Array.from(document.querySelectorAll('nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'));
         const navDetails: any[] = [];
+
+        navElements.forEach((nav, index) => {
+            // Assign a unique data-menu-id if not already set
+            if (!nav.hasAttribute('data-menu-id')) {
+                nav.setAttribute('data-menu-id', `menu-${index + 1}`);
+            }
+        });
         
         for (const nav of navElements) {
             // Create a unique fingerprint for each nav element
             const fingerprint = {
                 // Basic selector information
+                menuId: (nav as HTMLElement).dataset.menuId,
                 tagName: nav.tagName.toLowerCase(),
                 id: nav.id,
                 classes: Array.from(nav.classList).join(' '),
