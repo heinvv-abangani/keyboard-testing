@@ -45,12 +45,14 @@ interface NavGroup {
     indices: number[];
     count: number;
     selectors: string[];
+    menuId: string; // Add this to store the data-menu-id of the representative element
 }
 
 interface NavInfo {
     total: number;
     uniqueGroups: NavGroup[];
     uniqueIndices: number[];
+    menuIds: string[]; // Add this to store all the data-menu-id values
 }
 
 /**
@@ -154,7 +156,8 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
                 representativeIndex: bestIndex,
                 indices: similar,
                 count: similar.length,
-                selectors: similar.map(idx => navDetails[idx].selector)
+                selectors: similar.map(idx => navDetails[idx].selector),
+                menuId: navElements[bestIndex].getAttribute('data-menu-id') // Add menuId
             });
         }
         
@@ -162,7 +165,9 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
             total: navElements.length,
             uniqueGroups: groups,
             // Return the indices of the representative nav elements
-            uniqueIndices: groups.map(g => g.representativeIndex)
+            uniqueIndices: groups.map(g => g.representativeIndex),
+            // Return the menuIds of the representative nav elements
+            menuIds: groups.map(g => g.menuId)
         };
     });
     
@@ -196,8 +201,8 @@ export async function testMenus(page: Page, websiteUrl: string) {
         const allNavs = page.locator('nav');
         
         // Filter to only include the unique representative nav elements
-        const uniqueNavSelector = uniqueNavInfo.uniqueIndices
-            .map(idx => `nav:nth-of-type(${idx + 1})`)
+        const uniqueNavSelector = uniqueNavInfo.menuIds
+            .map(menuId => `nav[data-menu-id="${menuId}"]`)
             .join(', ');
         
         // Create a locator with only the unique nav elements
@@ -509,12 +514,13 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
             console.log(`Applying special handling for menu ${i + 1} with off-canvas pattern`);
         }
         
-        // Get all links in the menu
-        const menuItem = page.locator('nav').nth(i);
+        // Get all links in the menu using menuId for more stable selectors
+        const menuId = menu.menuId || `menu-${i + 1}`;
+        const menuItem = page.locator(`nav[data-menu-id="${menuId}"]`);
         const links = menuItem.locator('a');
         const linkCount = await links.count();
         
-        console.log(`Found ${linkCount} links in Menu ${i + 1}`);
+        console.log(`Found ${linkCount} links in Menu ${i + 1} (ID: ${menuId})`);
         
         // Check visibility on desktop
         if (menu.isVisible) {
@@ -730,12 +736,15 @@ export async function iterateMenus(page: Page, menus: Locator) {
 
     for (let i = 0; i < menuCount; i++) {
         const menuItem = menus.nth(i);
+        // Get the menu-id for more stable references
+        const menuId = await menuItem.getAttribute('data-menu-id');
+        
         // Enable debugging for Menu 3 to understand why it's not visible
         const isMenuIndex3 = i === 2; // Menu 3 has index 2 (0-based)
         const isMenuItemVisible = await isElementTrulyVisible(menuItem, true, isMenuIndex3);
         
         if (isMenuIndex3) {
-            console.log(`\n=== DETAILED VISIBILITY DEBUGGING FOR MENU 3 ===`);
+            console.log(`\n=== DETAILED VISIBILITY DEBUGGING FOR MENU 3 (ID: ${menuId}) ===`);
             console.log(`Menu 3 is reported as ${isMenuItemVisible ? 'VISIBLE' : 'NOT VISIBLE'}`);
             
             // Get additional information about the menu
@@ -796,6 +805,7 @@ export async function iterateMenus(page: Page, menus: Locator) {
         // Initialize menu details object
         menuDetails[i] = {
             name: menuName,
+            menuId: menuId, // Add menuId
             isVisible: isMenuItemVisible,
             isVisibleOnMobile: false,
             totalItems: 0,
@@ -808,8 +818,8 @@ export async function iterateMenus(page: Page, menus: Locator) {
             notes: []
         };
         
-        console.log(`\n--- Menu ${i + 1} ---`);
-        console.log(`Menu ${i + 1}: Visible = ${isMenuItemVisible}`);
+        console.log(`\n--- Menu ${i + 1} (ID: ${menuId}) ---`);
+        console.log(`Menu ${i + 1} (ID: ${menuId}): Visible = ${isMenuItemVisible}`);
 
         // If menu is not visible on desktop, check if it's visible on mobile
         if (!isMenuItemVisible) {
@@ -1546,15 +1556,26 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
     if (uniqueNavInfo) {
         // Add all the nav elements we've already processed to the set
         const allNavs = await page.locator('nav').all();
-        for (const idx of uniqueNavInfo.uniqueIndices) {
+        for (let i = 0; i < uniqueNavInfo.uniqueIndices.length; i++) {
+            const idx = uniqueNavInfo.uniqueIndices[i];
+            const menuId = uniqueNavInfo.menuIds[i];
             const nav = allNavs[idx];
-            const selector = await nav.evaluate(el => {
-                const tagName = el.tagName.toLowerCase();
-                const id = el.id ? `#${el.id}` : '';
-                const classes = Array.from(el.classList).join('.');
-                return tagName + id + (classes ? `.${classes}` : '');
-            });
-            processedNavs.add(selector);
+            
+            // Use menuId in the selector if available
+            let selector;
+            if (menuId) {
+                selector = `nav[data-menu-id="${menuId}"]`;
+                processedNavs.add(selector);
+            } else {
+                // Fallback to the old approach
+                selector = await nav.evaluate(el => {
+                    const tagName = el.tagName.toLowerCase();
+                    const id = el.id ? `#${el.id}` : '';
+                    const classes = Array.from(el.classList).join('.');
+                    return tagName + id + (classes ? `.${classes}` : '');
+                });
+                processedNavs.add(selector);
+            }
         }
         console.log(`Already processed ${processedNavs.size} unique nav elements`);
     }
@@ -2698,15 +2719,21 @@ async function getVisibleMenuStructures(page: Page): Promise<{selector: string, 
 async function getVisibleNavs(page: Page, menus: Locator): Promise<number[]> {
     const menuCount = await menus.count();
     const visibleNavs: number[] = [];
+    const visibleMenuIds: string[] = []; // Add this to store menuIds
     
     for (let i = 0; i < menuCount; i++) {
         const menuItem = menus.nth(i);
+        const menuId = await menuItem.getAttribute('data-menu-id'); // Get the menuId
         const isVisible = await isElementTrulyVisible(menuItem, true);
         
         if (isVisible) {
             visibleNavs.push(i);
+            if (menuId) visibleMenuIds.push(menuId); // Store the menuId
         }
     }
+    
+    // Log the visible menus with their IDs
+    console.log(`Visible menus: ${visibleNavs.map((idx, i) => `Menu ${idx + 1} (ID: ${visibleMenuIds[i] || 'unknown'})`).join(', ')}`);
     
     return visibleNavs;
 }
