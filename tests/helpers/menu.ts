@@ -17,21 +17,88 @@ import { getConfigByUrl } from "../config";
  * 3. Focus on accessibility standards and WCAG compliance rather than implementation details
  * 4. Use feature detection rather than framework detection
  */
-// Define types for the nav element fingerprint and group
+// Define menu types as an enum
+enum MenuType {
+    SimpleMenu = "SimpleMenu",
+    DropdownMenu = "DropdownMenu",
+    ToggleBasedSimpleMenu = "ToggleBasedSimpleMenu",
+    ToggleBasedDropdownMenu = "ToggleBasedDropdownMenu"
+}
+
+// Define view-specific information with expanded properties
+interface MenuView {
+    menuType: MenuType;
+    visibility: boolean;
+    totalItems: number;
+    visibleItems: number;
+    hasDropdowns: boolean;
+    hasKeyboardDropdowns: boolean;
+    hasMouseOnlyDropdowns: boolean;
+}
+
+// Define types for the nav element fingerprint with expanded properties
 interface NavFingerprint {
     menuId: string;
+    name: string;
+    
+    // View-specific information for desktop and mobile
+    view: {
+        desktop: MenuView;
+        mobile: MenuView;
+    };
+    
+    // Basic selector information
     tagName: string;
     id: string;
     classes: string;
+    
+    // Content information
     linkCount: number;
     linkTexts: string;
+    
+    // Structure information
     childrenCount: number;
     childrenTypes: string;
     parentId: string;
     parentClass: string;
+    
+    // Style information
     display: string;
     visibility: string;
     position: string;
+    
+    // Accessibility attributes
+    ariaAttributes: {
+        hasAriaExpanded: boolean;
+        hasAriaControls: boolean;
+        hasAriaLabel: boolean;
+        ariaLabelText: string;
+        hasAriaLabelledBy: boolean;
+        hasRole: boolean;
+        roleValue: string;
+    };
+    
+    // Interaction behavior for desktop
+    interactionBehavior: {
+        opensOnEnter: boolean;
+        opensOnSpace: boolean;
+        opensOnMouseOver: boolean;
+        opensOnClick: boolean;
+        closesOnEscape: boolean;
+        closesOnClickOutside: boolean;
+    };
+    
+    // Interaction behavior for mobile
+    interactionBehaviorMobile: {
+        opensOnEnter: boolean;
+        opensOnSpace: boolean;
+        opensOnTap: boolean;
+        closesOnEscape: boolean;
+        closesOnTapOutside: boolean;
+    };
+    
+    // Notes about the menu
+    notes: string[];
 }
 
 interface NavDetail {
@@ -45,14 +112,18 @@ interface NavGroup {
     indices: number[];
     count: number;
     selectors: string[];
-    menuId: string; // Add this to store the data-menu-id of the representative element
+    menuId: string; // Store the data-menu-id of the representative element
+    // Use the enhanced NavFingerprint
+    fingerprint: NavFingerprint;
 }
 
 interface NavInfo {
     total: number;
     uniqueGroups: NavGroup[];
     uniqueIndices: number[];
-    menuIds: string[]; // Add this to store all the data-menu-id values
+    menuIds: string[]; // Store all the data-menu-id values
+    // Store the complete fingerprints
+    fingerprints: NavFingerprint[];
 }
 
 /**
@@ -73,10 +144,87 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
         });
         
         for (const nav of navElements) {
+            // Function to determine menu type based on characteristics
+            const determineMenuType = (nav: Element, isDesktop: boolean) => {
+                // Check if it has dropdown elements
+                const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
+                
+                // Check if it's toggle-based (controlled by a button or has aria-expanded)
+                const isToggleBased =
+                    document.querySelector(`[aria-controls="${nav.id}"]`) !== null ||
+                    nav.querySelectorAll('[aria-expanded]').length > 0 ||
+                    nav.closest('[aria-expanded]') !== null;
+                
+                // Mobile view is more likely to be toggle-based
+                const isLikelyToggleBased = !isDesktop || isToggleBased;
+                
+                // Determine the menu type
+                if (isLikelyToggleBased && hasDropdowns) {
+                    return "ToggleBasedDropdownMenu";
+                } else if (isLikelyToggleBased) {
+                    return "ToggleBasedSimpleMenu";
+                } else if (hasDropdowns) {
+                    return "DropdownMenu";
+                } else {
+                    return "SimpleMenu";
+                }
+            };
+            
+            // Determine visibility based on display and visibility properties
+            const isVisible = (nav: Element) => {
+                const style = window.getComputedStyle(nav);
+                return style.display !== 'none' && style.visibility !== 'hidden';
+            };
+            
+            // Function to count visible items
+            const countVisibleItems = (element: Element) => {
+                const links = element.querySelectorAll('a');
+                let visibleCount = 0;
+                
+                for (const link of Array.from(links)) {
+                    const style = window.getComputedStyle(link);
+                    if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
+                        visibleCount++;
+                    }
+                }
+                
+                return visibleCount;
+            };
+            
+            // Function to check if element has dropdown elements
+            const hasDropdownElements = (element: Element) => {
+                return element.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
+            };
+            
             // Create a unique fingerprint for each nav element
             const fingerprint = {
                 // Basic selector information
                 menuId: (nav as HTMLElement).dataset.menuId,
+                name: nav.getAttribute('aria-label') || nav.id || `Menu ${(nav as HTMLElement).dataset.menuId}`,
+                
+                // View-specific information for desktop and mobile
+                view: {
+                    desktop: {
+                        menuType: determineMenuType(nav, true),
+                        visibility: isVisible(nav),
+                        totalItems: nav.querySelectorAll('a').length,
+                        visibleItems: countVisibleItems(nav),
+                        hasDropdowns: hasDropdownElements(nav),
+                        hasKeyboardDropdowns: false, // Will be determined during testing
+                        hasMouseOnlyDropdowns: false // Will be determined during testing
+                    },
+                    mobile: {
+                        menuType: determineMenuType(nav, false),
+                        visibility: false, // Will be determined during mobile testing
+                        totalItems: nav.querySelectorAll('a').length,
+                        visibleItems: 0, // Will be determined during mobile testing
+                        hasDropdowns: hasDropdownElements(nav),
+                        hasKeyboardDropdowns: false, // Will be determined during testing
+                        hasMouseOnlyDropdowns: false // Will be determined during testing
+                    }
+                },
+                
+                // Basic selector information
                 tagName: nav.tagName.toLowerCase(),
                 id: nav.id,
                 classes: Array.from(nav.classList).join(' '),
@@ -96,7 +244,40 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
                 // Computed style (helps identify if it's visible in current viewport)
                 display: window.getComputedStyle(nav).display,
                 visibility: window.getComputedStyle(nav).visibility,
-                position: window.getComputedStyle(nav).position
+                position: window.getComputedStyle(nav).position,
+                
+                // Accessibility attributes
+                ariaAttributes: {
+                    hasAriaExpanded: nav.querySelector('[aria-expanded]') !== null,
+                    hasAriaControls: nav.querySelector('[aria-controls]') !== null,
+                    hasAriaLabel: nav.hasAttribute('aria-label'),
+                    ariaLabelText: nav.getAttribute('aria-label') || '',
+                    hasAriaLabelledBy: nav.hasAttribute('aria-labelledby'),
+                    hasRole: nav.hasAttribute('role'),
+                    roleValue: nav.getAttribute('role') || ''
+                },
+                
+                // Interaction behavior for desktop
+                interactionBehavior: {
+                    opensOnEnter: false, // Will be determined during testing
+                    opensOnSpace: false, // Will be determined during testing
+                    opensOnMouseOver: false, // Will be determined during testing
+                    opensOnClick: false, // Will be determined during testing
+                    closesOnEscape: false, // Will be determined during testing
+                    closesOnClickOutside: false // Will be determined during testing
+                },
+                
+                // Interaction behavior for mobile
+                interactionBehaviorMobile: {
+                    opensOnEnter: false, // Will be determined during testing
+                    opensOnSpace: false, // Will be determined during testing
+                    opensOnTap: false, // Will be determined during testing
+                    closesOnEscape: false, // Will be determined during testing
+                    closesOnTapOutside: false // Will be determined during testing
+                },
+                
+                // Notes about the menu
+                notes: []
             };
             
             // Create a simple selector for identification
@@ -157,7 +338,9 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
                 indices: similar,
                 count: similar.length,
                 selectors: similar.map(idx => navDetails[idx].selector),
-                menuId: navElements[bestIndex].getAttribute('data-menu-id') // Add menuId
+                menuId: navElements[bestIndex].getAttribute('data-menu-id'),
+                // Include the full fingerprint
+                fingerprint: navDetails[bestIndex].fingerprint
             });
         }
         
@@ -167,7 +350,9 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
             // Return the indices of the representative nav elements
             uniqueIndices: groups.map(g => g.representativeIndex),
             // Return the menuIds of the representative nav elements
-            menuIds: groups.map(g => g.menuId)
+            menuIds: groups.map(g => g.menuId),
+            // Return the complete fingerprints
+            fingerprints: groups.map(g => g.fingerprint)
         };
     });
     
@@ -180,6 +365,26 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
         console.log(`- Similar selectors:`);
         group.selectors.forEach(selector => console.log(`  - ${selector}`));
     });
+    
+    // Add view-specific information to the log output
+    console.log("\n=== MENU TYPES DETECTED ===");
+    for (let i = 0; i < navInfo.menuIds.length; i++) {
+        const menuId = navInfo.menuIds[i];
+        const fingerprint = navInfo.fingerprints[i];
+        
+        console.log(`Menu ${i + 1} (ID: ${menuId}):`);
+        console.log(`  - Desktop: Type = ${fingerprint.view.desktop.menuType}, Visible = ${fingerprint.view.desktop.visibility}`);
+        console.log(`  - Mobile: Type = ${fingerprint.view.mobile.menuType}, Visible = ${fingerprint.view.mobile.visibility}`);
+        
+        // Log additional information from the enhanced fingerprint
+        console.log(`  - Accessibility:`);
+        console.log(`    - Has aria-expanded: ${fingerprint.ariaAttributes.hasAriaExpanded}`);
+        console.log(`    - Has aria-controls: ${fingerprint.ariaAttributes.hasAriaControls}`);
+        console.log(`    - Has aria-label: ${fingerprint.ariaAttributes.hasAriaLabel}`);
+        if (fingerprint.ariaAttributes.hasAriaLabel) {
+            console.log(`    - Aria label text: "${fingerprint.ariaAttributes.ariaLabelText}"`);
+        }
+    }
     
     return navInfo;
 }
@@ -209,7 +414,7 @@ export async function testMenus(page: Page, websiteUrl: string) {
         const menus = page.locator(uniqueNavSelector);
         
         // Use the unique navs for testing
-        const { results, menuDetails, menuSelectors } = await iterateMenus(page, menus);
+        const { results, menuDetails, menuSelectors } = await iterateMenus(page, menus, uniqueNavInfo);
         
         // Check for hidden menus controlled by buttons without aria-controls
         // or non-button elements with aria-expanded
@@ -262,6 +467,8 @@ export async function testMenus(page: Page, websiteUrl: string) {
             if (!menu) continue; // Skip if menu was not tested (e.g., not visible)
             
             console.log(`\n## Menu ${i + 1} ${menu.name ? `(${menu.name})` : ''}`);
+            console.log(`- Desktop: Type = ${menu.view?.desktop?.menuType || 'Unknown'}, Visible = ${menu.isVisible}`);
+            console.log(`- Mobile: Type = ${menu.view?.mobile?.menuType || 'Unknown'}, Visible = ${menu.isVisibleOnMobile}`);
             
             // Check if this menu is controlled by another menu
             const controlInfo = controlledMenuMap.get(i);
@@ -402,6 +609,45 @@ export async function testMenus(page: Page, websiteUrl: string) {
         }
         console.log(`Keyboard-focusable menu items: ${results.keyboardFocusableItems}`);
         
+        // Count menus by type for desktop and mobile
+        const desktopMenuTypeCount = {
+            [MenuType.SimpleMenu]: 0,
+            [MenuType.DropdownMenu]: 0,
+            [MenuType.ToggleBasedSimpleMenu]: 0,
+            [MenuType.ToggleBasedDropdownMenu]: 0
+        };
+        
+        const mobileMenuTypeCount = {
+            [MenuType.SimpleMenu]: 0,
+            [MenuType.DropdownMenu]: 0,
+            [MenuType.ToggleBasedSimpleMenu]: 0,
+            [MenuType.ToggleBasedDropdownMenu]: 0
+        };
+        
+        // Count each menu type for desktop and mobile
+        for (const menu of updatedMenuDetails) {
+            if (menu?.view?.desktop?.menuType) {
+                desktopMenuTypeCount[menu.view.desktop.menuType]++;
+            }
+            if (menu?.view?.mobile?.menuType) {
+                mobileMenuTypeCount[menu.view.mobile.menuType]++;
+            }
+        }
+        
+        // Print menu type summary
+        console.log('\n=== MENU TYPES SUMMARY ===');
+        console.log('Desktop:');
+        console.log(`  Simple Menus: ${desktopMenuTypeCount[MenuType.SimpleMenu]}`);
+        console.log(`  Dropdown Menus: ${desktopMenuTypeCount[MenuType.DropdownMenu]}`);
+        console.log(`  Toggle-Based Simple Menus: ${desktopMenuTypeCount[MenuType.ToggleBasedSimpleMenu]}`);
+        console.log(`  Toggle-Based Dropdown Menus: ${desktopMenuTypeCount[MenuType.ToggleBasedDropdownMenu]}`);
+        
+        console.log('Mobile:');
+        console.log(`  Simple Menus: ${mobileMenuTypeCount[MenuType.SimpleMenu]}`);
+        console.log(`  Dropdown Menus: ${mobileMenuTypeCount[MenuType.DropdownMenu]}`);
+        console.log(`  Toggle-Based Simple Menus: ${mobileMenuTypeCount[MenuType.ToggleBasedSimpleMenu]}`);
+        console.log(`  Toggle-Based Dropdown Menus: ${mobileMenuTypeCount[MenuType.ToggleBasedDropdownMenu]}`);
+        
         // Print WCAG success criteria evaluation
         console.log('\n=== WCAG EVALUATION ===');
         const keyboardAccessible = results.keyboardFocusableItems === results.totalMenuItems &&
@@ -473,7 +719,10 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
         const menu = menuDetails[i];
         if (!menu) continue; // Skip if menu was not tested
         
-        console.log(`\n--- Checking Menu ${i + 1} visibility across devices ---`);
+        const desktopMenuType = menu.view?.desktop?.menuType || MenuType.SimpleMenu;
+        const mobileMenuType = menu.view?.mobile?.menuType || MenuType.SimpleMenu;
+        console.log(`\n--- Checking Menu ${i + 1} (ID: ${menu.menuId}) visibility across devices ---`);
+        console.log(`  - Desktop Type: ${desktopMenuType}, Mobile Type: ${mobileMenuType}`);
         
         // Initialize item visibility tracking
         updatedMenuDetails[i].itemsVisibleOnDesktop = 0;
@@ -638,7 +887,7 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
     return { combinedResults, updatedMenuDetails };
 }
 
-export async function iterateMenus(page: Page, menus: Locator) {
+export async function iterateMenus(page: Page, menus: Locator, uniqueNavInfo?: NavInfo) {
     const menuCount = await menus.count();
     
     // Initialize results object
@@ -802,24 +1051,117 @@ export async function iterateMenus(page: Page, menus: Locator) {
             return '';
         });
         
-        // Initialize menu details object
-        menuDetails[i] = {
-            name: menuName,
-            menuId: menuId, // Add menuId
-            isVisible: isMenuItemVisible,
-            isVisibleOnMobile: false,
-            totalItems: 0,
-            visibleItems: 0,
-            keyboardFocusableItems: 0,
-            hasDropdowns: false,
-            hasKeyboardDropdowns: false,
-            hasMouseOnlyDropdowns: false,
-            hasAriaExpanded: false,
-            notes: []
-        };
+        // Get the fingerprint from uniqueNavInfo if available
+        const fingerprint = uniqueNavInfo?.fingerprints?.[i];
+        const desktopView = fingerprint?.view?.desktop || { menuType: MenuType.SimpleMenu, visibility: isMenuItemVisible };
+        const mobileView = fingerprint?.view?.mobile || { menuType: MenuType.SimpleMenu, visibility: false };
+        
+        // Initialize menu details object using the enhanced NavFingerprint
+        menuDetails[i] = fingerprint ?
+            // If we have a fingerprint from uniqueNavInfo, use it as a base
+            {
+                ...fingerprint,
+                // Update with current visibility
+                view: {
+                    desktop: {
+                        ...desktopView,
+                        visibility: isMenuItemVisible
+                    },
+                    mobile: {
+                        ...mobileView,
+                        visibility: false // Will be updated during mobile testing
+                    }
+                },
+                // Keep these for backward compatibility
+                isVisible: isMenuItemVisible,
+                isVisibleOnMobile: false
+            } :
+            // Otherwise create a new fingerprint
+            {
+                name: menuName,
+                menuId: menuId,
+                view: {
+                    desktop: {
+                        menuType: desktopView.menuType,
+                        visibility: isMenuItemVisible,
+                        totalItems: 0,
+                        visibleItems: 0,
+                        hasDropdowns: false,
+                        hasKeyboardDropdowns: false,
+                        hasMouseOnlyDropdowns: false
+                    },
+                    mobile: {
+                        menuType: mobileView.menuType,
+                        visibility: false,
+                        totalItems: 0,
+                        visibleItems: 0,
+                        hasDropdowns: false,
+                        hasKeyboardDropdowns: false,
+                        hasMouseOnlyDropdowns: false
+                    }
+                },
+                // Basic selector information
+                tagName: menuItem.evaluate(el => el.tagName.toLowerCase()),
+                id: menuId,
+                classes: menuItem.evaluate(el => Array.from(el.classList).join(' ')),
+                
+                // Content information
+                linkCount: 0,
+                linkTexts: '',
+                
+                // Structure information
+                childrenCount: 0,
+                childrenTypes: '',
+                parentId: '',
+                parentClass: '',
+                
+                // Style information
+                display: '',
+                visibility: '',
+                position: '',
+                
+                // Accessibility attributes
+                ariaAttributes: {
+                    hasAriaExpanded: false,
+                    hasAriaControls: false,
+                    hasAriaLabel: false,
+                    ariaLabelText: '',
+                    hasAriaLabelledBy: false,
+                    hasRole: false,
+                    roleValue: ''
+                },
+                
+                // Interaction behavior for desktop
+                interactionBehavior: {
+                    opensOnEnter: false,
+                    opensOnSpace: false,
+                    opensOnMouseOver: false,
+                    opensOnClick: false,
+                    closesOnEscape: false,
+                    closesOnClickOutside: false
+                },
+                
+                // Interaction behavior for mobile
+                interactionBehaviorMobile: {
+                    opensOnEnter: false,
+                    opensOnSpace: false,
+                    opensOnTap: false,
+                    closesOnEscape: false,
+                    closesOnTapOutside: false
+                },
+                
+                // For backward compatibility
+                isVisible: isMenuItemVisible,
+                isVisibleOnMobile: false,
+                
+                // Notes about the menu
+                notes: []
+            };
         
         console.log(`\n--- Menu ${i + 1} (ID: ${menuId}) ---`);
-        console.log(`Menu ${i + 1} (ID: ${menuId}): Visible = ${isMenuItemVisible}`);
+        console.log(`Menu ${i + 1} (ID: ${menuId}):`);
+        console.log(`  - Desktop: Type = ${desktopView.menuType}, Visible = ${isMenuItemVisible}`);
+        console.log(`  - Mobile: Type = ${mobileView.menuType}, Visible = ${menuDetails[i].isVisibleOnMobile}`);
 
         // If menu is not visible on desktop, check if it's visible on mobile
         if (!isMenuItemVisible) {
@@ -878,6 +1220,8 @@ export async function iterateMenus(page: Page, menus: Locator) {
             }
             
             menuDetails[i].isVisibleOnMobile = isMobileVisible;
+            // Update the view-specific information
+            menuDetails[i].view.mobile.visibility = isMobileVisible;
             console.log(`Menu ${i + 1}: Visible on mobile = ${isMobileVisible}`);
             
             if (isMobileVisible) {
@@ -992,6 +1336,15 @@ export async function iterateMenus(page: Page, menus: Locator) {
             // Test dropdown functionality with keyboard
             const keyboardAccessible = await testDropdownKeyboardAccessibility(page, menuItem);
             
+            // Update menu type based on dropdown accessibility
+            if (keyboardAccessible) {
+                menuDetails[i].view.desktop.menuType = MenuType.ToggleBasedDropdownMenu;
+                menuDetails[i].view.mobile.menuType = MenuType.ToggleBasedDropdownMenu;
+            } else {
+                menuDetails[i].view.desktop.menuType = MenuType.ToggleBasedSimpleMenu;
+                menuDetails[i].view.mobile.menuType = MenuType.ToggleBasedSimpleMenu;
+            }
+            
             // Test keyboard focusability
             const focusableCount = await testKeyboardFocusability(page, links);
             results.keyboardFocusableItems += focusableCount;
@@ -1009,6 +1362,10 @@ export async function iterateMenus(page: Page, menus: Locator) {
         else if (menuAnalysis.menuItemCount === menuAnalysis.visibleMenuItemCount) {
             console.log(`✅ All ${menuAnalysis.menuItemCount} menu items are visible by default`);
             results.menusWithAllItemsVisible++;
+            
+            // Set menu type to SimpleMenu since all items are visible by default
+            menuDetails[i].view.desktop.menuType = MenuType.SimpleMenu;
+            menuDetails[i].view.mobile.menuType = MenuType.SimpleMenu;
             
             // Test keyboard focusability
             const focusableCount = await testKeyboardFocusability(page, links);
@@ -1032,6 +1389,17 @@ export async function iterateMenus(page: Page, menus: Locator) {
             
             // Test dropdown functionality with keyboard
             const keyboardAccessible = await testDropdownKeyboardAccessibility(page, menuItem);
+            
+            // Update menu type based on dropdown accessibility
+            if (keyboardAccessible) {
+                menuDetails[i].view.desktop.menuType = MenuType.DropdownMenu;
+                menuDetails[i].view.mobile.menuType = MenuType.DropdownMenu;
+            } else {
+                // If not keyboard accessible but has dropdowns, it's still a dropdown menu
+                // but might only be accessible with mouse
+                menuDetails[i].view.desktop.menuType = MenuType.DropdownMenu;
+                menuDetails[i].view.mobile.menuType = MenuType.DropdownMenu;
+            }
             
             // Check if aria-expanded or aria-controls is used
             const hasAriaExpanded = await menuItem.locator('[aria-expanded]').count() > 0;
@@ -2035,6 +2403,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Create menu details object
                 const menuDetail = {
                     name: navName || `Hidden menu revealed by "${elementText.trim()}"`,
+                    menuId: await navElement.getAttribute('data-menu-id'), // Add menuId
+                    menuType: MenuType.ToggleBasedSimpleMenu, // Add menuType - since it's hidden and revealed by a toggle
                     isVisible: true, // It's now visible after clicking the element
                     isVisibleOnMobile: false, // We'll check this later
                     totalItems: linkCount,
@@ -2058,6 +2428,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Create menu details object
                 const menuDetail = {
                     name: menuStructure.selector || `Hidden menu revealed by "${elementText.trim()}"`,
+                    menuId: `menu-structure-${i}`, // Generate a menuId for menu-like structures
+                    menuType: MenuType.ToggleBasedSimpleMenu, // Add menuType - since it's hidden and revealed by a toggle
                     isVisible: true, // It's now visible after clicking the element
                     isVisibleOnMobile: false, // We'll check this later
                     totalItems: menuStructure.linkCount,
@@ -2252,6 +2624,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Create menu details object
                 const menuDetail = {
                     name: navName || `Hidden menu revealed by element "${elementText.trim()}"`,
+                    menuId: await navElement.getAttribute('data-menu-id'), // Add menuId
+                    menuType: MenuType.ToggleBasedSimpleMenu, // Add menuType - since it's hidden and revealed by a toggle
                     isVisible: true, // It's now visible after clicking the element
                     isVisibleOnMobile: false, // We'll check this later
                     totalItems: linkCount,
@@ -2275,6 +2649,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Create menu details object
                 const menuDetail = {
                     name: menuStructure.selector || `Hidden menu revealed by "${elementText.trim()}"`,
+                    menuId: `menu-structure-${i}`, // Generate a menuId for menu-like structures
+                    menuType: MenuType.ToggleBasedSimpleMenu, // Add menuType - since it's hidden and revealed by a toggle
                     isVisible: true, // It's now visible after clicking the element
                     isVisibleOnMobile: false, // We'll check this later
                     totalItems: menuStructure.linkCount,
@@ -2525,6 +2901,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Create menu details object
                 const menuDetail = {
                     name: navName || `Hidden menu revealed by "${elementText.trim()}"`,
+                    menuId: await navElement.getAttribute('data-menu-id'), // Add menuId
+                    menuType: MenuType.ToggleBasedSimpleMenu, // Add menuType - since it's hidden and revealed by a toggle
                     isVisible: true, // It's now visible after clicking the element
                     isVisibleOnMobile: false, // We'll check this later
                     totalItems: linkCount,
@@ -2548,6 +2926,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Create menu details object
                 const menuDetail = {
                     name: menuStructure.selector || `Hidden menu revealed by "${elementText.trim()}"`,
+                    menuId: `menu-structure-${i}`, // Generate a menuId for menu-like structures
+                    menuType: MenuType.ToggleBasedSimpleMenu, // Add menuType - since it's hidden and revealed by a toggle
                     isVisible: true, // It's now visible after clicking the element
                     isVisibleOnMobile: false, // We'll check this later
                     totalItems: menuStructure.linkCount,
