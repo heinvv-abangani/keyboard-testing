@@ -227,15 +227,54 @@ async function findToggleElements(page: Page): Promise<any> {
                 continue;
             }
             
+            // Check for elements that might be hidden by CSS media queries
+            const isHiddenByMediaQuery = (() => {
+                // Check for menu toggles that might be hidden on desktop
+                const classes = Array.from(toggle.classList);
+                const isLikelyMobileToggle = classes.some(cls =>
+                    cls.includes('mobile') ||
+                    cls.includes('menu-toggle') ||
+                    cls.includes('hamburger') ||
+                    cls.includes('menu--tablet')
+                );
+                
+                // Check if we're on desktop (viewport width >= 1025px)
+                const isDesktopViewport = window.innerWidth >= 1025;
+                
+                // If it's a likely mobile toggle and we're on desktop, check if it's actually hidden
+                if (isLikelyMobileToggle && isDesktopViewport) {
+                    // Check computed style to confirm it's actually hidden
+                    const style = window.getComputedStyle(toggle);
+                    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                        return true;
+                    }
+                }
+                
+                // Check computed style for any element
+                const style = window.getComputedStyle(toggle);
+                return style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
+            })();
+            
+            if (isHiddenByMediaQuery) {
+                const toggleId = toggle.getAttribute('data-toggle-id');
+                console.log(`Toggle ${toggleId} is hidden by CSS media query, skipping...`);
+                continue;
+            }
+            
             // Check if aria-controls refers to a nav element
             if (toggle.hasAttribute('aria-controls')) {
                 const controlledId = toggle.getAttribute('aria-controls');
                 const toggleId = toggle.getAttribute('data-toggle-id');
                 
-                // Skip specific known non-nav elements
-                if (controlledId === 'swiper-wrapper-a327ccb769b551bc') {
-                    console.log(`Toggle ${toggleId} has aria-controls="swiper-wrapper-a327ccb769b551bc" which is a known non-nav element, skipping...`);
-                    continue;
+                // Skip non-nav elements based on patterns in their IDs
+                if (controlledId) {
+                    const nonNavPatterns = ['wrapper', 'slider', 'carousel', 'tab-content', 'accordion'];
+                    const isLikelyNonNav = nonNavPatterns.some(pattern => controlledId.toLowerCase().includes(pattern));
+                    
+                    if (isLikelyNonNav) {
+                        console.log(`Toggle ${toggleId} has aria-controls="${controlledId}" which appears to be a non-navigation element, skipping...`);
+                        continue;
+                    }
                 }
                 
                 // Try to find the element by ID first
@@ -605,9 +644,31 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
                 }
             };
             
-            // Determine visibility based on display and visibility properties
+            // Determine visibility based on display, visibility properties, and media queries
             const isVisible = (nav: Element) => {
+                // Check if we're on desktop (viewport width >= 1025px)
+                const isDesktopViewport = window.innerWidth >= 1025;
+                
+                // Check for dropdown menus that might be hidden on desktop via media queries
+                const classes = Array.from(nav.classList);
+                const isLikelyMobileMenu = classes.some(cls =>
+                    cls.includes('mobile') ||
+                    cls.includes('dropdown') ||
+                    cls.includes('menu--tablet')
+                );
+                
+                // Check computed style to determine actual visibility
                 const style = window.getComputedStyle(nav);
+                
+                // If it's a likely mobile menu on desktop, check if it's actually hidden
+                if (isLikelyMobileMenu && isDesktopViewport) {
+                    // Check if it's actually hidden by CSS
+                    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                        console.log(`Nav element with class ${classes.join('.')} is hidden on desktop by media query`);
+                        return false;
+                    }
+                }
+                
                 return style.display !== 'none' && style.visibility !== 'hidden';
             };
             
@@ -865,6 +926,41 @@ export async function testMenus(page: Page, websiteUrl: string) {
                 if (toggle.fingerprint.ariaAttributes.hasAriaControls) {
                     // First check if the toggle element is visible
                     const toggleElement = page.locator(`[data-toggle-id="${toggle.fingerprint.toggleId}"]`);
+                    
+                    // Check if the element might be hidden by CSS media queries
+                    const isHiddenByMediaQuery = await toggleElement.evaluate((el) => {
+                        // Check for menu toggles that might be hidden on desktop
+                        const classes = Array.from(el.classList);
+                        const isLikelyMobileToggle = classes.some(cls =>
+                            cls.includes('mobile') ||
+                            cls.includes('menu-toggle') ||
+                            cls.includes('hamburger') ||
+                            cls.includes('menu--tablet')
+                        );
+                        
+                        // Check if we're on desktop (viewport width >= 1025px)
+                        const isDesktopViewport = window.innerWidth >= 1025;
+                        
+                        // If it's a likely mobile toggle and we're on desktop, check if it's actually hidden
+                        if (isLikelyMobileToggle && isDesktopViewport) {
+                            // Check computed style to confirm it's actually hidden
+                            const style = window.getComputedStyle(el);
+                            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                                return true;
+                            }
+                        }
+                        
+                        // Check computed style for any element
+                        const style = window.getComputedStyle(el);
+                        return style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
+                    });
+                    
+                    if (isHiddenByMediaQuery) {
+                        console.log(`Toggle ${toggle.fingerprint.toggleId} is hidden by CSS media query, skipping...`);
+                        continue;
+                    }
+                    
+                    // Perform the standard visibility check
                     const isToggleVisible = await isElementTrulyVisible(toggleElement, true);
                     
                     if (!isToggleVisible) {
@@ -1569,7 +1665,37 @@ export async function iterateMenus(page: Page, menus: Locator, uniqueNavInfo?: N
         
         // Enable debugging for Menu 3 to understand why it's not visible
         const isMenuIndex3 = i === 2; // Menu 3 has index 2 (0-based)
-        const isMenuItemVisible = await isElementTrulyVisible(menuItem, true, isMenuIndex3);
+        
+        // Check if this is a dropdown menu that should be hidden on desktop
+        const isHiddenByMediaQuery = await menuItem.evaluate((el) => {
+            // Check for dropdown menus that might be hidden on desktop via media queries
+            const classes = Array.from(el.classList);
+            const isLikelyMobileMenu = classes.some(cls =>
+                cls.includes('mobile') ||
+                cls.includes('dropdown') ||
+                cls.includes('menu--tablet') ||
+                cls.includes('nav-menu--dropdown') ||
+                cls.includes('nav-menu__container')
+            );
+            
+            // Check if we're on desktop (viewport width >= 1025px)
+            const isDesktopViewport = window.innerWidth >= 1025;
+            
+            // If it's a likely mobile menu and we're on desktop, check if it's actually hidden
+            if (isLikelyMobileMenu && isDesktopViewport) {
+                // Check computed style to confirm it's actually hidden
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                    console.log(`Menu ${el.getAttribute('data-menu-id')} with classes ${classes.join('.')} is hidden on desktop by media query`);
+                    return true;
+                }
+            }
+            
+            return false;
+        });
+        
+        // If it's a dropdown menu hidden on desktop, mark it as not visible
+        const isMenuItemVisible = isHiddenByMediaQuery ? false : await isElementTrulyVisible(menuItem, true, isMenuIndex3);
         
         if (isMenuIndex3) {
             console.log(`\n=== DETAILED VISIBILITY DEBUGGING FOR MENU 3 (ID: ${menuId}) ===`);
