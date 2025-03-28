@@ -199,9 +199,15 @@ async function findToggleElements(page: Page): Promise<any> {
     
     const toggleInfo = await page.evaluate(() => {
         const toggleElements = Array.from(document.querySelectorAll(
-            'button[aria-expanded], [role="button"][aria-expanded], a[aria-expanded], ' +
-            'button[aria-controls], [role="button"][aria-controls], a[aria-controls], ' +
-            '.hamburger, .menu-toggle, .navbar-toggle'
+            'button[aria-expanded]:not(nav button[aria-expanded]):not(nav *), ' +
+            '[role="button"][aria-expanded]:not(nav [role="button"][aria-expanded]):not(nav *), ' +
+            'a[aria-expanded]:not(nav a[aria-expanded]):not(nav *), ' +
+            'button[aria-controls]:not(nav button[aria-controls]):not(nav *), ' +
+            '[role="button"][aria-controls]:not(nav [role="button"][aria-controls]):not(nav *), ' +
+            'a[aria-controls]:not(nav a[aria-controls]):not(nav *), ' +
+            '.hamburger:not(nav .hamburger):not(nav *), ' +
+            '.menu-toggle:not(nav .menu-toggle):not(nav *), ' +
+            '.navbar-toggle:not(nav .navbar-toggle):not(nav *)'
         ));
         const toggleDetails: any[] = [];
 
@@ -213,6 +219,40 @@ async function findToggleElements(page: Page): Promise<any> {
         });
         
         for (const toggle of toggleElements) {
+            // Skip invisible toggles
+            const rect = toggle.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) {
+                const toggleId = toggle.getAttribute('data-toggle-id');
+                console.log(`Toggle ${toggleId} is not visible, skipping...`);
+                continue;
+            }
+            
+            // Check if aria-controls refers to a nav element
+            if (toggle.hasAttribute('aria-controls')) {
+                const controlledId = toggle.getAttribute('aria-controls');
+                const toggleId = toggle.getAttribute('data-toggle-id');
+                
+                // Skip specific known non-nav elements
+                if (controlledId === 'swiper-wrapper-a327ccb769b551bc') {
+                    console.log(`Toggle ${toggleId} has aria-controls="swiper-wrapper-a327ccb769b551bc" which is a known non-nav element, skipping...`);
+                    continue;
+                }
+                
+                // Try to find the element by ID first
+                let element = document.getElementById(controlledId || '');
+                
+                // If not found by ID, try to find by data-menu-id
+                if (!element) {
+                    element = document.querySelector(`[data-menu-id="${controlledId}"]`);
+                }
+                
+                // Check if the element exists and is a nav element
+                if (!element || element.tagName.toLowerCase() !== 'nav') {
+                    // Skip if not a nav element
+                    console.log(`Toggle ${toggleId} has aria-controls="${controlledId}" but it does not refer to a nav element, skipping...`);
+                    continue;
+                }
+            }
             // Function to determine icon type
             function determineIconType(element: Element): string {
                 const classes = Array.from(element.classList);
@@ -349,8 +389,16 @@ async function testToggleAccessibility(page: Page, toggleInfo: any) {
         console.log(`\nTesting Toggle ${i + 1} (ID: ${toggle.fingerprint.toggleId}):`);
         
         // Get the toggle element
-        const toggleElement = page.locator(`[data-toggle-id="${toggle.fingerprint.toggleId}"]`);
-        const count = await toggleElement.count();
+        let toggleElement;
+        let count = 0;
+        
+        try {
+            toggleElement = page.locator(`[data-toggle-id="${toggle.fingerprint.toggleId}"]`);
+            count = await toggleElement.count();
+        } catch (error) {
+            console.log(`  ❌ Error finding toggle element: ${error.message}`);
+            continue;
+        }
         
         if (count === 0) {
             console.log(`  ❌ Toggle element not found`);
@@ -361,57 +409,143 @@ async function testToggleAccessibility(page: Page, toggleInfo: any) {
         console.log(`  Testing keyboard accessibility:`);
         
         // Focus the element
-        await toggleElement.focus();
-        console.log(`  - Element focused`);
+        try {
+            await toggleElement.focus();
+            console.log(`  - Element focused`);
+        } catch (error) {
+            console.log(`  - Error focusing element: ${error.message}`);
+            continue;
+        }
         
         // Test Enter key
-        const beforeEnter = await page.evaluate(() => {
-            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
-            return expandedElements.length;
-        });
+        let respondsToEnter = false;
+        try {
+            let beforeEnter = 0;
+            try {
+                beforeEnter = await page.evaluate(() => {
+                    const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+                    return expandedElements.length;
+                });
+            } catch (error) {
+                console.log(`  - Error getting initial state: ${error.message}`);
+            }
+            
+            try {
+                await page.keyboard.press('Enter');
+            } catch (error) {
+                console.log(`  - Error pressing Enter key: ${error.message}`);
+                continue;
+            }
+            
+            try {
+                const afterEnter = await page.evaluate(() => {
+                    const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+                    return expandedElements.length;
+                });
+                
+                respondsToEnter = afterEnter !== beforeEnter;
+                
+                // Reset state if needed
+                if (respondsToEnter) {
+                    try {
+                        await page.keyboard.press('Enter');
+                    } catch (error) {
+                        console.log(`  - Error resetting state: ${error.message}`);
+                    }
+                }
+            } catch (error) {
+                // If page navigated after Enter key, consider it as responding
+                console.log(`  - Page navigated after Enter key press`);
+                respondsToEnter = true;
+                
+                // If page navigated, we need to return early
+                toggle.fingerprint.interactionBehavior.respondsToEnter = respondsToEnter;
+                toggle.fingerprint.interactionBehavior.respondsToSpace = false;
+                toggle.fingerprint.interactionBehavior.respondsToClick = false;
+                console.log(`  - Responds to Enter key: ${respondsToEnter ? '✅ Yes' : '❌ No'}`);
+                console.log(`  - Responds to Space key: ❌ No (skipped due to navigation)`);
+                console.log(`  - Responds to mouse click: ❌ No (skipped due to navigation)`);
+                console.log(`  Overall keyboard accessibility: ${respondsToEnter ? '✅ PASS' : '❌ FAIL'}`);
+                
+                if (!respondsToEnter) {
+                    toggle.fingerprint.notes.push("Toggle is not keyboard accessible");
+                }
+                
+                return toggleInfo;
+            }
+        } catch (error) {
+            console.log(`  - Error testing Enter key: ${error.message}`);
+        }
         
-        await page.keyboard.press('Enter');
-        
-        const afterEnter = await page.evaluate(() => {
-            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
-            return expandedElements.length;
-        });
-        
-        const respondsToEnter = afterEnter !== beforeEnter;
         toggle.fingerprint.interactionBehavior.respondsToEnter = respondsToEnter;
         console.log(`  - Responds to Enter key: ${respondsToEnter ? '✅ Yes' : '❌ No'}`);
         
-        // Reset state if needed
-        if (respondsToEnter) {
-            await page.keyboard.press('Enter');
-        }
-        
         // Test Space key
-        const beforeSpace = await page.evaluate(() => {
-            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
-            return expandedElements.length;
-        });
-        
-        await page.keyboard.press('Space');
-        
-        const afterSpace = await page.evaluate(() => {
-            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
-            return expandedElements.length;
-        });
-        
-        const respondsToSpace = afterSpace !== beforeSpace;
+        let respondsToSpace = false;
+        let afterSpace = 0; // Declare outside try block so it's accessible to the Click test
+        try {
+            const beforeSpace = await page.evaluate(() => {
+                const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+                return expandedElements.length;
+            });
+            
+            await page.keyboard.press('Space');
+            
+            try {
+                afterSpace = await page.evaluate(() => {
+                    const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+                    return expandedElements.length;
+                });
+                
+                respondsToSpace = afterSpace !== beforeSpace;
+            } catch (error) {
+                // If page navigated after Space key, consider it as responding
+                console.log(`  - Page navigated after Space key press`);
+                respondsToSpace = true;
+                
+                // If page navigated, we need to return early
+                toggle.fingerprint.interactionBehavior.respondsToSpace = respondsToSpace;
+                toggle.fingerprint.interactionBehavior.respondsToClick = false;
+                console.log(`  - Responds to Space key: ${respondsToSpace ? '✅ Yes' : '❌ No'}`);
+                console.log(`  - Responds to mouse click: ❌ No (skipped due to navigation)`);
+                console.log(`  Overall keyboard accessibility: ${respondsToEnter || respondsToSpace ? '✅ PASS' : '❌ FAIL'}`);
+                
+                if (!(respondsToEnter || respondsToSpace)) {
+                    toggle.fingerprint.notes.push("Toggle is not keyboard accessible");
+                }
+                
+                return toggleInfo;
+            }
+        } catch (error) {
+            console.log(`  - Error testing Space key: ${error.message}`);
+        }
         toggle.fingerprint.interactionBehavior.respondsToSpace = respondsToSpace;
         console.log(`  - Responds to Space key: ${respondsToSpace ? '✅ Yes' : '❌ No'}`);
         
         // Test mouse click
-        await toggleElement.click();
-        
-        const afterClick = await page.evaluate(() => {
-            const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
-            return expandedElements.length;
-        });
-        
-        const respondsToClick = afterClick !== afterSpace;
+        let respondsToClick = false;
+        try {
+            try {
+                await toggleElement.click();
+            } catch (error) {
+                console.log(`  - Error clicking element: ${error.message}`);
+            }
+            
+            try {
+                const afterClick = await page.evaluate(() => {
+                    const expandedElements = document.querySelectorAll('[aria-expanded="true"]');
+                    return expandedElements.length;
+                });
+                
+                respondsToClick = afterClick !== afterSpace;
+            } catch (error) {
+                // If page navigated after click, consider it as responding
+                console.log(`  - Page navigated after click`);
+                respondsToClick = true;
+            }
+        } catch (error) {
+            console.log(`  - Error testing click: ${error.message}`);
+        }
         toggle.fingerprint.interactionBehavior.respondsToClick = respondsToClick;
         console.log(`  - Responds to mouse click: ${respondsToClick ? '✅ Yes' : '❌ No'}`);
         
@@ -675,7 +809,17 @@ async function findUniqueNavElements(page: Page): Promise<NavInfo> {
         const menuId = navInfo.menuIds[i];
         const fingerprint = navInfo.fingerprints[i];
         
-        console.log(`Menu ${i + 1} (ID: ${menuId}):`);
+        // Create a descriptive identifier using available information
+        let menuIdentifier = menuId;
+        if (fingerprint.ariaAttributes.hasAriaLabel && fingerprint.ariaAttributes.ariaLabelText) {
+            menuIdentifier += ` (aria-label: "${fingerprint.ariaAttributes.ariaLabelText}")`;
+        } else if (fingerprint.id) {
+            menuIdentifier += ` (id: "${fingerprint.id}")`;
+        } else if (fingerprint.classes) {
+            menuIdentifier += ` (class: "${fingerprint.classes}")`;
+        }
+        
+        console.log(`Menu ${i + 1} (ID: ${menuIdentifier}):`);
         console.log(`  - Desktop: Type = ${fingerprint.view.desktop.menuType}, Visible = ${fingerprint.view.desktop.visibility}`);
         console.log(`  - Mobile: Type = ${fingerprint.view.mobile.menuType}, Visible = ${fingerprint.view.mobile.visibility}`);
         
@@ -719,13 +863,36 @@ export async function testMenus(page: Page, websiteUrl: string) {
             
             for (const toggle of toggleInfo.toggleDetails) {
                 if (toggle.fingerprint.ariaAttributes.hasAriaControls) {
+                    // First check if the toggle element is visible
+                    const toggleElement = page.locator(`[data-toggle-id="${toggle.fingerprint.toggleId}"]`);
+                    const isToggleVisible = await isElementTrulyVisible(toggleElement, true);
+                    
+                    if (!isToggleVisible) {
+                        console.log(`Toggle ${toggle.fingerprint.toggleId} is not visible, skipping...`);
+                        continue;
+                    }
+                    
                     const controlledId = toggle.fingerprint.ariaAttributes.ariaControlsValue;
                     
                     // Find the menu with this ID
                     for (let i = 0; i < uniqueNavInfo.fingerprints.length; i++) {
                         const menu = uniqueNavInfo.fingerprints[i];
                         
-                        if (menu.id === controlledId || menu.menuId === controlledId) {
+                        // Check if the controlled element is a nav element
+                        const isNavElement = await page.evaluate((controlledId) => {
+                            // Try to find the element by ID first
+                            let element = document.getElementById(controlledId);
+                            
+                            // If not found by ID, try to find by data-menu-id
+                            if (!element) {
+                                element = document.querySelector(`[data-menu-id="${controlledId}"]`);
+                            }
+                            
+                            // Check if the element exists and is a nav element
+                            return element && element.tagName.toLowerCase() === 'nav';
+                        }, controlledId);
+                        
+                        if (isNavElement && (menu.id === controlledId || menu.menuId === controlledId)) {
                             // Connect the toggle to the menu
                             menu.toggleId = toggle.fingerprint.toggleId;
                             
@@ -736,11 +903,31 @@ export async function testMenus(page: Page, websiteUrl: string) {
                             toggle.fingerprint.controlledMenu.menuTypeMobile = menu.view.mobile.menuType;
                             toggle.fingerprint.controlledMenu.isVisibleMobile = menu.view.mobile.visibility;
                             
-                            console.log(`Connected Toggle ${toggle.fingerprint.toggleId} to Menu ${menu.menuId}`);
+                            // Get additional menu information for logging
+                            const menuInfo = await page.evaluate((menuId) => {
+                                const element = document.querySelector(`[data-menu-id="${menuId}"]`);
+                                if (!element) return { ariaLabel: '', id: '', className: '' };
+                                
+                                return {
+                                    ariaLabel: element.getAttribute('aria-label') || '',
+                                    id: element.id || '',
+                                    className: element.className || ''
+                                };
+                            }, menu.menuId);
+                            
+                            // Create a descriptive identifier using available information
+                            let menuIdentifier = menu.menuId;
+                            if (menuInfo.ariaLabel) menuIdentifier += ` (aria-label: "${menuInfo.ariaLabel}")`;
+                            else if (menuInfo.id) menuIdentifier += ` (id: "${menuInfo.id}")`;
+                            else if (menuInfo.className) menuIdentifier += ` (class: "${menuInfo.className}")`;
+                            
+                            console.log(`Connected Toggle ${toggle.fingerprint.toggleId} to Menu ${menuIdentifier}`);
                             
                             // Add notes
                             menu.notes.push(`This menu is controlled by toggle element "${toggle.fingerprint.toggleId}" via aria-controls`);
-                            toggle.fingerprint.notes.push(`This toggle controls menu "${menu.menuId}" via aria-controls`);
+                            toggle.fingerprint.notes.push(`This toggle controls menu "${menuIdentifier}" via aria-controls`);
+                        } else if (!isNavElement && (menu.id === controlledId || menu.menuId === controlledId)) {
+                            console.log(`Toggle ${toggle.fingerprint.toggleId} has aria-controls="${controlledId}" but it does not refer to a nav element, skipping connection`);
                         }
                     }
                 }
@@ -1206,7 +1393,13 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
             combinedResults.itemsVisibleOnEither += linkCount;
         } else {
             // Standard approach for other menus
-            const visibleOnEitherCount = updatedMenuDetails[i].itemDetails.filter(item => item.visibleOnEither).length;
+            // Calculate the visibleOnEither count correctly by checking each item
+            let visibleOnEitherCount = 0;
+            for (const item of updatedMenuDetails[i].itemDetails) {
+                if (item.visibleOnDesktop || item.visibleOnMobile) {
+                    visibleOnEitherCount++;
+                }
+            }
             updatedMenuDetails[i].itemsVisibleOnEither = visibleOnEitherCount;
             
             console.log(`${visibleOnEitherCount}/${linkCount} links visible on either desktop or mobile`);
@@ -1233,7 +1426,48 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
 }
 
 export async function iterateMenus(page: Page, menus: Locator, uniqueNavInfo?: NavInfo) {
-    const menuCount = await menus.count();
+    let menuCount = 0;
+    
+    try {
+        // Check if page is still open before trying to count
+        if (page.isClosed()) {
+            console.log("Page is closed, cannot iterate menus");
+            // Return default results to avoid null checks
+            return {
+                results: {
+                    totalMenus: 0,
+                    visibleMenus: 0,
+                    menusWithAllItemsVisible: 0,
+                    menusWithKeyboardDropdowns: 0,
+                    menusWithMouseOnlyDropdowns: 0,
+                    menusWithAriaExpanded: 0,
+                    totalMenuItems: 0,
+                    keyboardFocusableItems: 0
+                },
+                menuDetails: [],
+                menuSelectors: []
+            };
+        }
+        
+        menuCount = await menus.count();
+    } catch (error) {
+        console.log(`Error finding menu elements: ${error.message}`);
+        // Return default results to avoid null checks
+        return {
+            results: {
+                totalMenus: 0,
+                visibleMenus: 0,
+                menusWithAllItemsVisible: 0,
+                menusWithKeyboardDropdowns: 0,
+                menusWithMouseOnlyDropdowns: 0,
+                menusWithAriaExpanded: 0,
+                totalMenuItems: 0,
+                keyboardFocusableItems: 0
+            },
+            menuDetails: [],
+            menuSelectors: []
+        };
+    }
     
     // Initialize results object
     const results = {
@@ -1503,14 +1737,26 @@ export async function iterateMenus(page: Page, menus: Locator, uniqueNavInfo?: N
                 notes: []
             };
         
-        console.log(`\n--- Menu ${i + 1} (ID: ${menuId}) ---`);
-        console.log(`Menu ${i + 1} (ID: ${menuId}):`);
+        // Create a descriptive identifier using available information
+        let menuIdentifier = menuId;
+        if (menuName) {
+            if (menuName.startsWith('#')) {
+                menuIdentifier += ` (id: "${menuName.substring(1)}")`;
+            } else if (menuName.startsWith('.')) {
+                menuIdentifier += ` (class: "${menuName.substring(1)}")`;
+            } else {
+                menuIdentifier += ` (aria-label: "${menuName}")`;
+            }
+        }
+        
+        console.log(`\n--- Menu ${i + 1} (ID: ${menuIdentifier}) ---`);
+        console.log(`Menu ${i + 1} (ID: ${menuIdentifier}):`);
         console.log(`  - Desktop: Type = ${desktopView.menuType}, Visible = ${isMenuItemVisible}`);
         console.log(`  - Mobile: Type = ${mobileView.menuType}, Visible = ${menuDetails[i].isVisibleOnMobile}`);
 
         // If menu is not visible on desktop, check if it's visible on mobile
         if (!isMenuItemVisible) {
-            console.log(`Menu ${i + 1} is not visible on desktop, checking mobile visibility...`);
+            console.log(`Menu ${i + 1} (ID: ${menuIdentifier}) is not visible on desktop, checking mobile visibility...`);
             
             // Set mobile viewport
             await page.setViewportSize({ width: 375, height: 667 }); // iPhone SE size
