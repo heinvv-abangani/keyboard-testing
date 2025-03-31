@@ -21,6 +21,16 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
     const locatorElement = await element.elementHandle();
     if (!locatorElement) return false;
     
+    // First check if element is hidden using offsetParent (most reliable method)
+    const isHiddenByOffsetParent = await locatorElement.evaluate(el => {
+        return (el as HTMLElement).offsetParent === null;
+    });
+    
+    if (isHiddenByOffsetParent) {
+        if (debugElement) console.log(`Element is hidden (offsetParent is null)`);
+        return false;
+    }
+    
     // Check if this is a controlled element (via aria-controls) that might be toggled
     const isControlledElement = await locatorElement.evaluate(el => {
         return el.id && document.querySelector(`[aria-controls="${el.id}"]`) !== null;
@@ -150,8 +160,8 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 }
             }
             
-            // Add known dropdown classes
-            document.querySelectorAll('.dropdown-menu, [class*="nav-menu--dropdown"], [class*="nav-menu__container"]')
+            // Add elements with dropdown-related classes
+            document.querySelectorAll('.dropdown-menu, [class*="dropdown"], [class*="submenu"], [class*="sub-menu"]')
                 .forEach(el => possibleDropdowns.push(el));
             
             // Find the closest dropdown
@@ -822,7 +832,7 @@ export async function detectAndClosePopup(page: Page) {
             const results: PopupInfo[] = [];
             const elements = document.querySelectorAll('*');
             
-            for (const el of elements) {
+            for (const el of Array.from(elements)) {
                 const style = window.getComputedStyle(el);
                 if (
                     (style.position === 'fixed' || style.position === 'absolute') &&
@@ -911,3 +921,4 @@ export async function detectAndClosePopup(page: Page) {
     
     return false;
 }
+
