@@ -194,10 +194,13 @@ interface NavInfo {
 /**
  * Find toggle elements that control menus
  */
-async function findToggleElements(page: Page): Promise<any> {
+async function findToggleElements(page: Page, uniqueNavInfo?: NavInfo): Promise<any> {
     console.log("\n=== CHECKING FOR TOGGLE ELEMENTS ===");
     
-    const toggleInfo = await page.evaluate(() => {
+    // Extract menuIds from uniqueNavInfo to pass to the evaluate function
+    const menuIds = uniqueNavInfo?.menuIds || [];
+    
+    const toggleInfo = await page.evaluate((menuIds) => {
         const toggleElements = Array.from(document.querySelectorAll(
             'button[aria-expanded]:not(nav button[aria-expanded]):not(nav *), ' +
             '[role="button"][aria-expanded]:not(nav [role="button"][aria-expanded]):not(nav *), ' +
@@ -272,27 +275,12 @@ async function findToggleElements(page: Page): Promise<any> {
                 const controlledId = toggle.getAttribute('aria-controls');
                 const toggleId = toggle.getAttribute('data-toggle-id');
                 
-                // Skip non-nav elements based on patterns in their IDs
-                if (controlledId) {
-                    const nonNavPatterns = ['wrapper', 'slider', 'carousel', 'tab-content', 'accordion'];
-                    const isLikelyNonNav = nonNavPatterns.some(pattern => controlledId.toLowerCase().includes(pattern));
-                    
-                    if (isLikelyNonNav) {
-                        console.log(`Toggle ${toggleId} has aria-controls="${controlledId}" which appears to be a non-navigation element, skipping...`);
-                        continue;
-                    }
-                }
-                
                 // Try to find the element by ID first
                 let element = document.getElementById(controlledId || '');
                 
-                // If not found by ID, try to find by data-menu-id
-                if (!element) {
-                    element = document.querySelector(`[data-menu-id="${controlledId}"]`);
-                }
-                
                 // Check if the element exists and is a nav element
-                if (!element || element.tagName.toLowerCase() !== 'nav') {
+                // Instead of checking the element's tag name, use menuIds to check if this ID is a known menu
+                if (!element || !controlledId || !menuIds.includes(controlledId)) {
                     // Skip if not a nav element
                     console.log(`Toggle ${toggleId} has aria-controls="${controlledId}" but it does not refer to a nav element, skipping...`);
                     continue;
@@ -401,7 +389,7 @@ async function findToggleElements(page: Page): Promise<any> {
             toggleDetails: toggleDetails,
             toggleIds: toggleDetails.map(t => t.fingerprint.toggleId)
         };
-    });
+    }, menuIds);
     
     console.log(`Found ${toggleInfo.total} toggle elements`);
     
@@ -934,7 +922,7 @@ export async function testMenus(page: Page, websiteUrl: string) {
         console.log(`\n=== FOUND ${uniqueNavInfo.uniqueGroups.length} VISIBLE MENU(S) ===`);
         
         // Find toggle elements
-        const toggleInfo = await findToggleElements(page);
+        const toggleInfo = await findToggleElements(page, uniqueNavInfo);
         console.log(`\n=== FOUND ${toggleInfo.total} TOGGLE ELEMENT(S) ===`);
         
         // Connect toggles to menus
@@ -2686,6 +2674,135 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
     // Store original viewport size
     const originalViewport = await page.viewportSize() || { width: 1280, height: 720 };
     
+    // Find toggle elements
+    // First look for elements with role="button" and aria-expanded=false
+    const desktopRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
+    const desktopButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
+    const desktopNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not(nav :not(button)[aria-expanded=false])').all();
+    
+    // Check in mobile viewport
+    await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    // Find elements in mobile viewport
+    const mobileRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
+    const mobileButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
+    const mobileNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not(nav :not(button)[aria-expanded=false])').all();
+    
+    // Find other toggle elements
+    const menuToggleSelectors = [
+        '.menu-toggle',
+        '.navbar-toggle',
+        '.hamburger',
+        '.menu-button',
+        '.mobile-menu-toggle',
+        '.nav-toggle',
+        '.toggle-menu',
+        '[class*="menu-toggle"]',
+        '[class*="toggle-menu"]',
+        '[class*="hamburger"]'
+    ];
+    const otherToggleElementsSelector = menuToggleSelectors.join(', ') + ':not([aria-expanded]):not(nav *)';
+    
+    // Check in desktop viewport
+    await page.setViewportSize(originalViewport);
+    await page.waitForTimeout(500); // Wait for responsive changes
+    const desktopOtherToggleElements = await page.locator(otherToggleElementsSelector).all();
+    
+    // Check in mobile viewport
+    await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
+    await page.waitForTimeout(500); // Wait for responsive changes
+    const mobileOtherToggleElements = await page.locator(otherToggleElementsSelector).all();
+    
+    // Switch back to desktop viewport
+    await page.setViewportSize(originalViewport);
+    await page.waitForTimeout(500); // Wait for responsive changes
+    
+    // Define the type for element details
+    interface ElementDetails {
+        selector: string;
+        text: string;
+        uniqueId: string;
+    }
+    
+    // Function to get element details
+    const getElementDetails = async (element: Locator): Promise<ElementDetails> => {
+        return await element.evaluate(el => {
+            const tagName = el.tagName.toLowerCase();
+            const id = el.id ? `#${el.id}` : '';
+            const classes = Array.from(el.classList).join(' ');
+            const selector = tagName + (id ? id : '') + (classes ? `.${classes.replace(/ /g, '.')}` : '');
+            const text = el.textContent?.trim() || '';
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            
+            return {
+                selector,
+                text: text || ariaLabel || '',
+                uniqueId: selector // Use selector as unique identifier
+            };
+        });
+    };
+    
+    // Collect all desktop elements
+    const allDesktopElements = [
+        ...desktopRoleButtonsWithAriaExpanded,
+        ...desktopButtonsWithAriaExpanded,
+        ...desktopNonButtonsWithAriaExpanded,
+        ...desktopOtherToggleElements
+    ];
+    
+    // Collect all mobile elements
+    const allMobileElements = [
+        ...mobileRoleButtonsWithAriaExpanded,
+        ...mobileButtonsWithAriaExpanded,
+        ...mobileNonButtonsWithAriaExpanded,
+        ...mobileOtherToggleElements
+    ];
+    
+    // Get details for all elements
+    const desktopElementDetails: ElementDetails[] = [];
+    for (const element of allDesktopElements) {
+        desktopElementDetails.push(await getElementDetails(element));
+    }
+    
+    const mobileElementDetails: ElementDetails[] = [];
+    for (const element of allMobileElements) {
+        mobileElementDetails.push(await getElementDetails(element));
+    }
+    
+    // Remove duplicates
+    const uniqueDesktopElements: ElementDetails[] = [];
+    const seenDesktopIds = new Set<string>();
+    for (const details of desktopElementDetails) {
+        if (!seenDesktopIds.has(details.uniqueId)) {
+            seenDesktopIds.add(details.uniqueId);
+            uniqueDesktopElements.push(details);
+        }
+    }
+    
+    const uniqueMobileElements: ElementDetails[] = [];
+    const seenMobileIds = new Set<string>();
+    for (const details of mobileElementDetails) {
+        if (!seenMobileIds.has(details.uniqueId)) {
+            seenMobileIds.add(details.uniqueId);
+            uniqueMobileElements.push(details);
+        }
+    }
+    
+    // Print desktop elements
+    console.log(`\n1. Potential visible menu toggle elements on desktop (${uniqueDesktopElements.length}):`);
+    for (let i = 0; i < uniqueDesktopElements.length; i++) {
+        const details = uniqueDesktopElements[i];
+        console.log(`  ${i+1}. ${details.selector}${details.text ? ` - "${details.text}"` : ''}`);
+    }
+    
+    // Print mobile elements
+    console.log(`\n2. Potential visible menu toggle elements on mobile (${uniqueMobileElements.length}):`);
+    for (let i = 0; i < uniqueMobileElements.length; i++) {
+        const details = uniqueMobileElements[i];
+        console.log(`  ${i+1}. ${details.selector}${details.text ? ` - "${details.text}"` : ''}`);
+    }
+    
     // Array to store details about hidden menus we find
     const hiddenMenus: any[] = [];
     
@@ -2717,141 +2834,6 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
         }
         console.log(`Already processed ${processedNavs.size} unique nav elements`);
     }
-    
-    // Find and list all potential toggle elements
-    console.log(`\nListing all potential toggle elements that might open hidden menus:`);
-    
-    // Check in desktop viewport first
-    console.log(`\nDesktop viewport toggle elements:`);
-    
-    // 1. Elements with aria-expanded=false
-    const desktopRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
-    const desktopButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
-    const desktopNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not(nav :not(button)[aria-expanded=false])').all();
-    
-    // 2. Other potential menu toggle elements
-    const menuToggleSelectors = [
-        '.menu-toggle',
-        '.navbar-toggle',
-        '.hamburger',
-        '.menu-button',
-        '.mobile-menu-toggle',
-        '.nav-toggle',
-        '.toggle-menu',
-        '[class*="menu-toggle"]',
-        '[class*="toggle-menu"]',
-        '[class*="hamburger"]'
-    ];
-    const otherToggleElementsSelector = menuToggleSelectors.join(', ') + ':not([aria-expanded]):not(nav *)';
-    const desktopOtherToggleElements = await page.locator(otherToggleElementsSelector).all();
-    
-    // Check in mobile viewport
-    await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
-    await page.waitForTimeout(500); // Wait for responsive changes
-    
-    console.log(`\nMobile viewport toggle elements:`);
-    
-    // 1. Elements with aria-expanded=false in mobile
-    const mobileRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
-    const mobileButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
-    const mobileNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not(nav :not(button)[aria-expanded=false])').all();
-    
-    // 2. Other potential menu toggle elements in mobile
-    const mobileOtherToggleElements = await page.locator(otherToggleElementsSelector).all();
-    
-    // Switch back to desktop viewport
-    await page.setViewportSize(originalViewport);
-    await page.waitForTimeout(500); // Wait for responsive changes
-    // Print all potential toggle elements without duplicates
-    const printToggleElements = async () => {
-        // Define the type for element details
-        interface ElementDetails {
-            selector: string;
-            text: string;
-            uniqueId: string;
-        }
-        
-        // Function to get element details
-        const getElementDetails = async (element: Locator): Promise<ElementDetails> => {
-            return await element.evaluate(el => {
-                const tagName = el.tagName.toLowerCase();
-                const id = el.id ? `#${el.id}` : '';
-                const classes = Array.from(el.classList).join(' ');
-                const selector = tagName + (id ? id : '') + (classes ? `.${classes.replace(/ /g, '.')}` : '');
-                const text = el.textContent?.trim() || '';
-                const ariaLabel = el.getAttribute('aria-label') || '';
-                
-                return {
-                    selector,
-                    text: text || ariaLabel || '',
-                    uniqueId: selector // Use selector as unique identifier
-                };
-            });
-        };
-        
-        // Collect all desktop elements
-        const allDesktopElements = [
-            ...desktopRoleButtonsWithAriaExpanded,
-            ...desktopButtonsWithAriaExpanded,
-            ...desktopNonButtonsWithAriaExpanded,
-            ...desktopOtherToggleElements
-        ];
-        
-        // Collect all mobile elements
-        const allMobileElements = [
-            ...mobileRoleButtonsWithAriaExpanded,
-            ...mobileButtonsWithAriaExpanded,
-            ...mobileNonButtonsWithAriaExpanded,
-            ...mobileOtherToggleElements
-        ];
-        
-        // Get details for all elements
-        const desktopElementDetails: ElementDetails[] = [];
-        for (const element of allDesktopElements) {
-            desktopElementDetails.push(await getElementDetails(element));
-        }
-        
-        const mobileElementDetails: ElementDetails[] = [];
-        for (const element of allMobileElements) {
-            mobileElementDetails.push(await getElementDetails(element));
-        }
-        
-        // Remove duplicates
-        const uniqueDesktopElements: ElementDetails[] = [];
-        const seenDesktopIds = new Set<string>();
-        for (const details of desktopElementDetails) {
-            if (!seenDesktopIds.has(details.uniqueId)) {
-                seenDesktopIds.add(details.uniqueId);
-                uniqueDesktopElements.push(details);
-            }
-        }
-        
-        const uniqueMobileElements: ElementDetails[] = [];
-        const seenMobileIds = new Set<string>();
-        for (const details of mobileElementDetails) {
-            if (!seenMobileIds.has(details.uniqueId)) {
-                seenMobileIds.add(details.uniqueId);
-                uniqueMobileElements.push(details);
-            }
-        }
-        
-        // Print desktop elements
-        console.log(`\n1. Potential visible menu toggle elements on desktop (${uniqueDesktopElements.length}):`);
-        for (let i = 0; i < uniqueDesktopElements.length; i++) {
-            const details = uniqueDesktopElements[i];
-            console.log(`  ${i+1}. ${details.selector}${details.text ? ` - "${details.text}"` : ''}`);
-        }
-        
-        // Print mobile elements
-        console.log(`\n2. Potential visible menu toggle elements on mobile (${uniqueMobileElements.length}):`);
-        for (let i = 0; i < uniqueMobileElements.length; i++) {
-            const details = uniqueMobileElements[i];
-            console.log(`  ${i+1}. ${details.selector}${details.text ? ` - "${details.text}"` : ''}`);
-        }
-    };
-    
-    // Print the toggle elements
-    await printToggleElements();
     // 1. Look for any elements with aria-expanded=false (including those outside nav structures)
     console.log(`\nTesting elements with aria-expanded=false...`);
     
