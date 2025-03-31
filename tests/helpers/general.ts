@@ -195,8 +195,7 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
     // Check if this is a navigation menu (desktop or mobile), which should be considered visible
     const isNavMenu = await locatorElement.evaluate(el => {
         // First, check if this is a navigation element
-        const isNav = el.tagName.toLowerCase() === 'nav' ||
-                     el.getAttribute('role') === 'navigation';
+        const isNav = el.closest('[data-menu-id]') !== null;
         
         if (!isNav) return false; // If it's not a nav element, it's not a navigation menu
         
@@ -370,20 +369,7 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
             }
             
             // Check if element is a navigation or menu element using semantic detection
-            const isNavElement =
-                // Check for semantic navigation role
-                current.getAttribute('role') === 'navigation' ||
-                // Check for semantic nav element
-                current.tagName.toLowerCase() === 'nav' ||
-                // Check for aria-label that indicates navigation
-                (current.getAttribute('aria-label') &&
-                 /\b(nav|navigation|menu)\b/i.test(current.getAttribute('aria-label'))) ||
-                // Check for ancestors with navigation role
-                current.closest('[role="navigation"]') !== null ||
-                current.closest('nav') !== null ||
-                // Use class-based detection as fallback only
-                current.closest('[class*="menu"]') !== null ||
-                current.closest('[class*="nav"]') !== null;
+            const isNavElement = current.closest('[data-menu-id]') !== null;
                 
             if (debugElement && isNavElement) {
                 console.log(`  Element is in a menu or navigation element`);
@@ -457,8 +443,8 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
                 
                 // Check if this is a submenu that's part of a main navigation
                 const isPartOfMainNav = (() => {
-                    // Check if this submenu is inside a nav element
-                    const parentNav = current.closest('nav, [role="navigation"]');
+                    // Check if this submenu is inside a navigation element
+                    const parentNav = current.closest('[data-menu-id], [role="navigation"]');
                     if (!parentNav) return false;
                     
                     // Check if the nav element has an aria-label indicating it's a main menu

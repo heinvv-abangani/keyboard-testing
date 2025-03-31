@@ -202,15 +202,15 @@ async function findToggleElements(page: Page, uniqueNavInfo?: NavInfo): Promise<
     
     const toggleInfo = await page.evaluate((menuIds) => {
         const toggleElements = Array.from(document.querySelectorAll(
-            'button[aria-expanded]:not(nav button[aria-expanded]):not(nav *), ' +
-            '[role="button"][aria-expanded]:not(nav [role="button"][aria-expanded]):not(nav *), ' +
-            'a[aria-expanded]:not(nav a[aria-expanded]):not(nav *), ' +
-            'button[aria-controls]:not(nav button[aria-controls]):not(nav *), ' +
-            '[role="button"][aria-controls]:not(nav [role="button"][aria-controls]):not(nav *), ' +
-            'a[aria-controls]:not(nav a[aria-controls]):not(nav *), ' +
-            '.hamburger:not(nav .hamburger):not(nav *), ' +
-            '.menu-toggle:not(nav .menu-toggle):not(nav *), ' +
-            '.navbar-toggle:not(nav .navbar-toggle):not(nav *)'
+            'button[aria-expanded]:not([data-menu-id] button[aria-expanded]):not([data-menu-id] *), ' +
+            '[role="button"][aria-expanded]:not([data-menu-id] [role="button"][aria-expanded]):not([data-menu-id] *), ' +
+            'a[aria-expanded]:not([data-menu-id] a[aria-expanded]):not([data-menu-id] *), ' +
+            'button[aria-controls]:not([data-menu-id] button[aria-controls]):not([data-menu-id] *), ' +
+            '[role="button"][aria-controls]:not([data-menu-id] [role="button"][aria-controls]):not([data-menu-id] *), ' +
+            'a[aria-controls]:not([data-menu-id] a[aria-controls]):not([data-menu-id] *), ' +
+            '.hamburger:not([data-menu-id] .hamburger):not([data-menu-id] *), ' +
+            '.menu-toggle:not([data-menu-id] .menu-toggle):not([data-menu-id] *), ' +
+            '.navbar-toggle:not([data-menu-id] .navbar-toggle):not([data-menu-id] *)'
         ));
         const toggleDetails: any[] = [];
 
@@ -1000,8 +1000,8 @@ export async function testMenus(page: Page, websiteUrl: string) {
                                 element = document.querySelector(`[data-menu-id="${controlledId}"]`);
                             }
                             
-                            // Check if the element exists and is a nav element
-                            return element && element.tagName.toLowerCase() === 'nav';
+                            // Check if the element exists and has a data-menu-id attribute (all identified nav elements have this)
+                            return element && element.hasAttribute('data-menu-id');
                         }, controlledId);
                         
                         if (isNavElement && (menu.id === controlledId || menu.menuId === controlledId)) {
@@ -1046,12 +1046,12 @@ export async function testMenus(page: Page, websiteUrl: string) {
             }
         }
         
-        // Get all nav elements
-        const allNavs = page.locator('nav');
+        // Get all elements with data-menu-id (all identified nav elements)
+        const allNavs = page.locator('[data-menu-id]');
         
         // Filter to only include the unique representative nav elements
         const uniqueNavSelector = uniqueNavInfo.menuIds
-            .map(menuId => `nav[data-menu-id="${menuId}"]`)
+            .map(menuId => `[data-menu-id="${menuId}"]`)
             .join(', ');
         
         // Create a locator with only the unique nav elements
@@ -1382,7 +1382,7 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
         
         // Check if this is in a footer section
         const isInFooter = await page.evaluate((index) => {
-            const nav = document.querySelectorAll('nav')[index];
+            const nav = document.querySelectorAll('[data-menu-id]')[index];
             return nav && (
                 nav.closest('footer') !== null ||
                 nav.closest('[class*="footer"]') !== null
@@ -1409,7 +1409,7 @@ export async function checkCombinedVisibility(page: Page, menuDetails: any[]) {
         
         // Get all links in the menu using menuId for more stable selectors
         const menuId = menu.menuId || `menu-${i + 1}`;
-        const menuItem = page.locator(`nav[data-menu-id="${menuId}"]`);
+        const menuItem = page.locator(`[data-menu-id="${menuId}"]`);
         const links = menuItem.locator('a');
         const linkCount = await links.count();
         
@@ -2015,8 +2015,8 @@ export async function iterateMenus(page: Page, menus: Locator, uniqueNavInfo?: N
                 }
                 // Check if this is a navigation menu (desktop or mobile)
                 const isNavigationMenu = await menuItem.first().evaluate(el => {
-                    // Check if it's a nav element
-                    return el.tagName.toLowerCase() === 'nav';
+                    // Check if it's a navigation element (identified by data-menu-id)
+                    return el.hasAttribute('data-menu-id');
                 });
 
                 if (isNavigationMenu) {
@@ -2298,7 +2298,7 @@ export async function iterateMenuItems(links: Locator) {
             const isFromNavigationMenuTest = await links.first().evaluate(el => {
                 // Check if the parent menu has a data attribute indicating it's being tested
                 // as a navigation menu despite being not visible
-                const nav = el.closest('nav');
+                const nav = el.closest('[data-menu-id]');
                 return nav && nav.hasAttribute('data-testing-nav-menu');
             });
             
@@ -2347,7 +2347,7 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
     const isFromNavigationMenuTest = await links.first().evaluate(el => {
         // Check if the parent menu has a data attribute indicating it's being tested
         // as a navigation menu despite being not visible
-        const nav = el.closest('nav');
+        const nav = el.closest('[data-menu-id]');
         return nav && nav.hasAttribute('data-testing-nav-menu');
     });
     
@@ -2676,18 +2676,18 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
     
     // Find toggle elements
     // First look for elements with role="button" and aria-expanded=false
-    const desktopRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
-    const desktopButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
-    const desktopNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not(nav :not(button)[aria-expanded=false])').all();
+    const desktopRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not([data-menu-id] [role="button"][aria-expanded=false])').all();
+    const desktopButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not([data-menu-id] button[aria-expanded=false])').all();
+    const desktopNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not([data-menu-id] :not(button)[aria-expanded=false])').all();
     
     // Check in mobile viewport
     await page.setViewportSize({ width: 375, height: 667 }); // Mobile viewport
     await page.waitForTimeout(500); // Wait for responsive changes
     
     // Find elements in mobile viewport
-    const mobileRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not(nav [role="button"][aria-expanded=false])').all();
-    const mobileButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not(nav button[aria-expanded=false])').all();
-    const mobileNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not(nav :not(button)[aria-expanded=false])').all();
+    const mobileRoleButtonsWithAriaExpanded = await page.locator('[role="button"][aria-expanded=false]:not([aria-controls]):not([data-menu-id] [role="button"][aria-expanded=false])').all();
+    const mobileButtonsWithAriaExpanded = await page.locator('button[aria-expanded=false]:not([aria-controls]):not([data-menu-id] button[aria-expanded=false])').all();
+    const mobileNonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded=false]:not([data-menu-id] :not(button)[aria-expanded=false])').all();
     
     // Find other toggle elements
     const menuToggleSelectors = [
@@ -2702,7 +2702,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
         '[class*="toggle-menu"]',
         '[class*="hamburger"]'
     ];
-    const otherToggleElementsSelector = menuToggleSelectors.join(', ') + ':not([aria-expanded]):not(nav *)';
+    const otherToggleElementsSelector = menuToggleSelectors.join(', ') + ':not([aria-expanded]):not([data-menu-id] *)';
     
     // Check in desktop viewport
     await page.setViewportSize(originalViewport);
@@ -2809,8 +2809,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
     // If we have uniqueNavInfo, use it to track which nav elements we've already processed
     const processedNavs = new Set<string>();
     if (uniqueNavInfo) {
-        // Add all the nav elements we've already processed to the set
-        const allNavs = await page.locator('nav').all();
+        // Add all the elements with data-menu-id (all identified nav elements) we've already processed to the set
+        const allNavs = await page.locator('[data-menu-id]').all();
         for (let i = 0; i < uniqueNavInfo.uniqueIndices.length; i++) {
             const idx = uniqueNavInfo.uniqueIndices[i];
             const menuId = uniqueNavInfo.menuIds[i];
@@ -2819,7 +2819,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
             // Use menuId in the selector if available
             let selector;
             if (menuId) {
-                selector = `nav[data-menu-id="${menuId}"]`;
+                selector = `[data-menu-id="${menuId}"]`;
                 processedNavs.add(selector);
             } else {
                 // Fallback to the old approach
@@ -3027,7 +3027,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
             const visibleNavsBefore = await getVisibleNavs(page, menus);
             
             // Look for dropdown navigation menus that appear after clicking
-            const dropdownMenus = page.locator('nav.dropdown-menu, nav[class*="dropdown"], nav[class*="menu-dropdown"], nav[aria-hidden]');
+            const dropdownMenus = page.locator('[data-menu-id].dropdown-menu, [data-menu-id][class*="dropdown"], [data-menu-id][class*="menu-dropdown"], [data-menu-id][aria-hidden]');
             
             // Get count of matching elements
             const menuCount = await dropdownMenus.count();
@@ -3042,7 +3042,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                 // Check if this menu was already visible before clicking
                 const wasVisibleBefore = await menu.evaluate((el, visibleIndices) => {
                     // Find the index of this nav element among all navs
-                    const allNavs = Array.from(document.querySelectorAll('nav'));
+                    const allNavs = Array.from(document.querySelectorAll('[data-menu-id]'));
                     const index = allNavs.indexOf(el as HTMLElement);
                     return visibleIndices.includes(index);
                 }, visibleNavsBefore);
@@ -3070,7 +3070,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                         const classes = Array.from(el.classList).join('.');
                         return {
                             selector: tagName + id + (classes ? `.${classes}` : ''),
-                            index: Array.from(document.querySelectorAll('nav')).indexOf(el as HTMLElement) + 1
+                            index: Array.from(document.querySelectorAll('[data-menu-id]')).indexOf(el as HTMLElement) + 1
                         };
                     });
                     
@@ -3155,7 +3155,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
             
             if (!dropdownMenuFound) {
                 // Try to find it directly with generic selectors
-                const dropdownMenus = page.locator('nav.dropdown-menu, nav[class*="dropdown"], nav[class*="menu-dropdown"], nav[aria-hidden]');
+                const dropdownMenus = page.locator('[data-menu-id].dropdown-menu, [data-menu-id][class*="dropdown"], [data-menu-id][class*="menu-dropdown"], [data-menu-id][aria-hidden]');
                 const menuCount = await dropdownMenus.count();
                 
                 // Get all visible nav elements before
@@ -3171,7 +3171,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                     // Check if this menu was already visible before
                     const wasVisibleBefore = await menu.evaluate((el, visibleIndices) => {
                         // Find the index of this nav element among all navs
-                        const allNavs = Array.from(document.querySelectorAll('nav'));
+                        const allNavs = Array.from(document.querySelectorAll('[data-menu-id]'));
                         const index = allNavs.indexOf(el as HTMLElement);
                         return visibleIndices.includes(index);
                     }, visibleNavsBefore);
@@ -3199,7 +3199,7 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
                             const classes = Array.from(el.classList).join('.');
                             return {
                                 selector: tagName + id + (classes ? `.${classes}` : ''),
-                                index: Array.from(document.querySelectorAll('nav')).indexOf(el as HTMLElement) + 1
+                                index: Array.from(document.querySelectorAll('[data-menu-id]')).indexOf(el as HTMLElement) + 1
                             };
                         });
                         
@@ -3338,8 +3338,8 @@ export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavI
     
     // 2. Look for non-button elements with aria-expanded
     console.log(`\nLooking for non-button elements with aria-expanded...`);
-    // Exclude elements inside nav elements
-    const nonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded]:not(nav :not(button)[aria-expanded])').all();
+    // Exclude elements inside navigation elements (identified by data-menu-id)
+    const nonButtonsWithAriaExpanded = await page.locator(':not(button)[aria-expanded]:not([data-menu-id] :not(button)[aria-expanded])').all();
     console.log(`Found ${nonButtonsWithAriaExpanded.length} non-button elements with aria-expanded outside of nav elements`);
     
     // Check each element
@@ -3850,11 +3850,11 @@ async function getVisibleMenuStructures(page: Page): Promise<{selector: string, 
         // Find elements with menu-like classes that aren't <nav> elements
         for (const pattern of menuClassPatterns) {
             // Use querySelectorAll to find elements with the pattern in their class
-            const elements = document.querySelectorAll(`:not(nav)[class*="${pattern}"]`);
+            const elements = document.querySelectorAll(`:not([data-menu-id])[class*="${pattern}"]`);
             
             for (const el of elements) {
-                // Skip if this is a nav element (shouldn't happen due to :not(nav) but just in case)
-                if (el.tagName.toLowerCase() === 'nav') continue;
+                // Skip if this is a navigation element (identified by data-menu-id)
+                if (el.hasAttribute('data-menu-id')) continue;
                 
                 // Skip if this element is not visible
                 const style = window.getComputedStyle(el);
@@ -3900,8 +3900,8 @@ async function getVisibleMenuStructures(page: Page): Promise<{selector: string, 
         // Also look for elements with standard ARIA roles - ONLY use standard roles, not website-specific ones
         const roleElements = document.querySelectorAll('[role="menu"], [role="navigation"], [role="menubar"]');
         for (const el of roleElements) {
-            // Skip if this is a nav element
-            if (el.tagName.toLowerCase() === 'nav') continue;
+            // Skip if this is a navigation element (identified by data-menu-id)
+            if (el.hasAttribute('data-menu-id')) continue;
             
             // Skip if this element is not visible
             const style = window.getComputedStyle(el);
@@ -4299,7 +4299,7 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
     const hasDutchLanguageMenus = await page.evaluate(() => {
         // Check for Dutch language indicators
         const dutchTexts = ['Menu', 'Navigatie', 'Zoeken', 'Contact'];
-        const menuElements = document.querySelectorAll('nav, [role="navigation"], .menu, .nav');
+        const menuElements = document.querySelectorAll('[data-menu-id], [role="navigation"], .menu, .nav');
         
         for (const el of menuElements) {
             const text = el.textContent || '';
