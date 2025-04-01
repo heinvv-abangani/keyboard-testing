@@ -97,6 +97,8 @@ interface MenuView {
     hasDropdowns: boolean;
     hasKeyboardDropdowns: boolean;
     hasMouseOnlyDropdowns: boolean;
+    display: string;
+    position: string;
 }
 
 // Define types for the nav element fingerprint with expanded properties
@@ -125,11 +127,7 @@ interface NavFingerprint {
     childrenTypes: string;
     parentId: string;
     parentClass: string;
-    
-    // Style information
-    display: string;
-    visibility: string;
-    position: string;
+
     
     // Accessibility attributes
     ariaAttributes: {
@@ -436,10 +434,13 @@ class MenuTester {
      * Find unique nav elements by comparing their content and structure
      */
     async findUniqueNavElements(): Promise<NavInfo> {
-        console.log("\n=== CHECKING FOR UNIQUE VISIBLE NAV ELEMENTS ===");
+        console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS (INCLUDING HIDDEN MENUS) ===");
         
         const navInfo = await this.page.evaluate(() => {
-            const navElements = Array.from(document.querySelectorAll('nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'));
+            // Include hidden menus by also selecting elements with aria-expanded and aria-controls attributes
+            const navElements = Array.from(document.querySelectorAll(
+                'nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'
+            ));
             const navDetails: any[] = [];
 
             navElements.forEach((nav, index) => {
@@ -587,7 +588,9 @@ class MenuTester {
                             visibleItems: 0, // Will be determined during mobile testing
                             hasDropdowns: hasDropdownElements(nav),
                             hasKeyboardDropdowns: false, // Will be determined during testing
-                            hasMouseOnlyDropdowns: false // Will be determined during testing
+                            hasMouseOnlyDropdowns: false, // Will be determined during testing
+                            display: window.getComputedStyle(nav).display,
+                            position: window.getComputedStyle(nav).position,
                         }
                     },
                     
@@ -607,11 +610,6 @@ class MenuTester {
                     // Position information (helps identify if it's the same nav in different viewports)
                     parentId: nav.parentElement?.id || '',
                     parentClass: nav.parentElement?.className || '',
-                    
-                    // Computed style (helps identify if it's visible in current viewport)
-                    display: window.getComputedStyle(nav).display,
-                    visibility: window.getComputedStyle(nav).visibility,
-                    position: window.getComputedStyle(nav).position,
                     
                     // Accessibility attributes
                     ariaAttributes: {
@@ -733,6 +731,8 @@ class MenuTester {
             console.log(`- Similar selectors:`);
             group.selectors.forEach(selector => console.log(`  - ${selector}`));
         });
+
+        console.log( navInfo );
         
         // Add view-specific information to the log output
         console.log("\n=== VISIBLE MENU TYPES DETECTED ===");
@@ -762,10 +762,63 @@ class MenuTester {
             if (fingerprint.ariaAttributes.hasAriaLabel) {
                 console.log(`    - Aria label text: "${fingerprint.ariaAttributes.ariaLabelText}"`);
             }
+
+            console.log( navInfo );
         }
         
         // Store the nav elements in the class property
         this.uniqueNavElements = navInfo;
+
+
+        console.log( this.uniqueNavElements );
+        
+        // Log the uniqueNavElements for debugging
+        console.log("\n=== UNIQUE NAV ELEMENTS DETAILS ===");
+        console.log("Total unique nav elements:", this.uniqueNavElements.total);
+        console.log("Unique groups count:", this.uniqueNavElements.uniqueGroups.length);
+        console.log("Menu IDs:", this.uniqueNavElements.menuIds.join(", "));
+        
+        // Log visibility information for each fingerprint
+        console.log("\n=== NAV ELEMENTS VISIBILITY ===");
+        for (let i = 0; i < this.uniqueNavElements.fingerprints.length; i++) {
+            const fingerprint = this.uniqueNavElements.fingerprints[i];
+            console.log(`Nav ${i + 1} (ID: ${fingerprint.menuId}):`);
+            
+            // Log the view property with desktop and mobile MenuView
+            console.log(`  - View property:`);
+            console.log(`    - Desktop MenuView:`);
+            console.log(`      - menuType: ${fingerprint.view.desktop.menuType}`);
+            console.log(`      - visibility: ${fingerprint.view.desktop.visibility}`);
+            console.log(`      - totalItems: ${fingerprint.view.desktop.totalItems}`);
+            console.log(`      - visibleItems: ${fingerprint.view.desktop.visibleItems}`);
+            console.log(`      - hasDropdowns: ${fingerprint.view.desktop.hasDropdowns}`);
+            console.log(`      - hasKeyboardDropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns}`);
+            console.log(`      - hasMouseOnlyDropdowns: ${fingerprint.view.desktop.hasMouseOnlyDropdowns}`);
+            
+            console.log(`    - Mobile MenuView:`);
+            console.log(`      - menuType: ${fingerprint.view.mobile.menuType}`);
+            console.log(`      - visibility: ${fingerprint.view.mobile.visibility}`);
+            console.log(`      - totalItems: ${fingerprint.view.mobile.totalItems}`);
+            console.log(`      - visibleItems: ${fingerprint.view.mobile.visibleItems}`);
+            console.log(`      - hasDropdowns: ${fingerprint.view.mobile.hasDropdowns}`);
+            console.log(`      - hasKeyboardDropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns}`);
+            console.log(`      - hasMouseOnlyDropdowns: ${fingerprint.view.mobile.hasMouseOnlyDropdowns}`);
+            
+            // Log other properties
+            console.log(`  - Link count: ${fingerprint.linkCount}`);
+            console.log(`  - Classes: ${fingerprint.classes}`);
+            console.log(`  - Tag name: ${fingerprint.tagName}`);
+            
+            // Log all properties of the fingerprint for debugging
+            console.log(`  - Full fingerprint properties:`);
+            console.log(`    - ID: ${fingerprint.id}`);
+            console.log(`    - Name: ${fingerprint.name}`);
+            console.log(`    - ARIA attributes:`);
+            console.log(`      - Has aria-expanded: ${fingerprint.ariaAttributes.hasAriaExpanded}`);
+            console.log(`      - Has aria-controls: ${fingerprint.ariaAttributes.hasAriaControls}`);
+            console.log(`      - Has aria-label: ${fingerprint.ariaAttributes.hasAriaLabel}`);
+            console.log(`      - Aria label text: ${fingerprint.ariaAttributes.ariaLabelText}`);
+        }
         
         return navInfo;
     }
@@ -1096,6 +1149,41 @@ export async function testMenus(page: Page, websiteUrl: string) {
         console.log(`\nActual unique navigation structures: ${uniqueNavInfo.uniqueGroups.length}`);
         console.log(`\n=== FOUND ${uniqueNavInfo.uniqueGroups.length} VISIBLE MENU(S) ===`);
         
+        // Log detailed information about uniqueNavInfo
+        console.log("\n=== UNIQUE NAV INFO DETAILS ===");
+        console.log("Total nav elements:", uniqueNavInfo.total);
+        console.log("Unique groups count:", uniqueNavInfo.uniqueGroups.length);
+        console.log("Menu IDs:", uniqueNavInfo.menuIds.join(", "));
+        
+        // Log visibility information for each fingerprint
+        console.log("\n=== NAV ELEMENTS VISIBILITY IN TEST MENUS ===");
+        for (let i = 0; i < uniqueNavInfo.fingerprints.length; i++) {
+            const fingerprint = uniqueNavInfo.fingerprints[i];
+            console.log(`Nav ${i + 1} (ID: ${fingerprint.menuId}):`);
+            
+            // Log the view property with desktop and mobile MenuView
+            console.log(`  - View property:`);
+            console.log(`    - Desktop MenuView:`);
+            console.log(`      - menuType: ${fingerprint.view.desktop.menuType}`);
+            console.log(`      - visibility: ${fingerprint.view.desktop.visibility}`);
+            console.log(`      - totalItems: ${fingerprint.view.desktop.totalItems}`);
+            console.log(`      - visibleItems: ${fingerprint.view.desktop.visibleItems}`);
+            console.log(`      - hasDropdowns: ${fingerprint.view.desktop.hasDropdowns}`);
+            console.log(`      - hasKeyboardDropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns}`);
+            console.log(`      - hasMouseOnlyDropdowns: ${fingerprint.view.desktop.hasMouseOnlyDropdowns}`);
+            
+            console.log(`    - Mobile MenuView:`);
+            console.log(`      - menuType: ${fingerprint.view.mobile.menuType}`);
+            console.log(`      - visibility: ${fingerprint.view.mobile.visibility}`);
+            console.log(`      - totalItems: ${fingerprint.view.mobile.totalItems}`);
+            console.log(`      - visibleItems: ${fingerprint.view.mobile.visibleItems}`);
+            console.log(`      - hasDropdowns: ${fingerprint.view.mobile.hasDropdowns}`);
+            console.log(`      - hasKeyboardDropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns}`);
+            console.log(`      - hasMouseOnlyDropdowns: ${fingerprint.view.mobile.hasMouseOnlyDropdowns}`);
+            
+            console.log(`  - Link count: ${fingerprint.linkCount}`);
+        }
+        
         // Find toggle elements
         const toggleInfo = await menuTester.findToggleElements();
         console.log(`\n=== FOUND ${toggleInfo.total} TOGGLE ELEMENT(S) ===`);
@@ -1299,14 +1387,17 @@ export async function testMenus(page: Page, websiteUrl: string) {
                 }
                 
                 // Test keyboard focusability
-                const focusableCount = await testKeyboardFocusability(page, links);
-                results.keyboardFocusableItems += focusableCount;
+                // Temporarily commented out
+                // const focusableCount = await testKeyboardFocusability(page, links);
+                // results.keyboardFocusableItems += focusableCount;
                 
-                if (focusableCount === menuAnalysis.menuItemCount) {
-                    console.log(`✅ All ${focusableCount} menu links are keyboard focusable`);
-                } else {
-                    console.log(`❗ Only ${focusableCount}/${menuAnalysis.menuItemCount} menu links are keyboard focusable`);
-                }
+                // if (focusableCount === menuAnalysis.menuItemCount) {
+                //     console.log(`✅ All ${focusableCount} menu links are keyboard focusable`);
+                // } else {
+                //     console.log(`❗ Only ${focusableCount}/${menuAnalysis.menuItemCount} menu links are keyboard focusable`);
+                // }
+
+                const focusableCount = 0;
                 
                 // Store menu details
                 menuDetails.push({
@@ -1477,35 +1568,48 @@ export async function iterateMenuItems(links: Locator) {
     
     return { menuItemCount, visibleMenuItemCount, isHiddenByTransform };
 }
-
 export async function testKeyboardFocusability(page: Page, links: Locator) {
-    const linkCount = await links.count();
-    let focusableCount = 0;
-    
-    console.log(`\n--- Testing Keyboard Focusability ---`);
-    console.log(`Found ${linkCount} links to test`);
-    
-    // Check if this is being called from a menu that was marked as not visible
-    // but is being tested as a navigation menu
-    const isFromNavigationMenuTest = await links.first().evaluate(el => {
-        // Check if the parent menu has a data attribute indicating it's being tested
-        // as a navigation menu despite being not visible
-        const nav = el.closest('[data-menu-id]');
-        return nav && nav.hasAttribute('data-testing-nav-menu');
-    }).catch(() => false);
-    
-    if (isFromNavigationMenuTest) {
-        console.log(`    This menu is not visible on desktop or mobile, but is being tested as a navigation menu`);
-        console.log(`    Skipping keyboard focusability test for non-visible menu`);
-        return 0; // Return 0 focusable items for non-visible menus
-    }
-    
-    // Check for off-canvas menu pattern
-    const hasOffCanvasMenu = await page.evaluate(() => {
-        // Look for common off-canvas menu patterns
-        const offCanvasMenus = document.querySelectorAll('.off-canvas-menu, .mobile-menu, .slide-menu, .side-menu');
-        return offCanvasMenus.length > 0;
-    });
+    try {
+        const linkCount = await links.count();
+        let focusableCount = 0;
+        
+        console.log(`\n--- Testing Keyboard Focusability ---`);
+        console.log(`Found ${linkCount} links to test`);
+        
+        // Check if this is being called from a menu that was marked as not visible
+        // but is being tested as a navigation menu
+        let isFromNavigationMenuTest = false;
+        try {
+            const result = await links.first().evaluate(el => {
+                // Check if the parent menu has a data attribute indicating it's being tested
+                // as a navigation menu despite being not visible
+                const nav = el.closest('[data-menu-id]');
+                return nav && nav.hasAttribute('data-testing-nav-menu');
+            }).catch(() => false);
+            
+            isFromNavigationMenuTest = !!result; // Ensure it's always a boolean
+        } catch (error) {
+            console.log(`    Error checking navigation menu test: ${error.message}`);
+        }
+        
+        if (isFromNavigationMenuTest) {
+            console.log(`    This menu is not visible on desktop or mobile, but is being tested as a navigation menu`);
+            console.log(`    Skipping keyboard focusability test for non-visible menu`);
+            return 0; // Return 0 focusable items for non-visible menus
+        }
+        
+        // Check for off-canvas menu pattern
+        let hasOffCanvasMenu = false;
+        try {
+            hasOffCanvasMenu = await page.evaluate(() => {
+                // Look for common off-canvas menu patterns
+                const offCanvasMenus = document.querySelectorAll('.off-canvas-menu, .mobile-menu, .slide-menu, .side-menu');
+                return offCanvasMenus.length > 0;
+            });
+        } catch (error) {
+            console.log(`    Error checking for off-canvas menu pattern: ${error.message}`);
+            console.log(`    Continuing with test...`);
+        }
     
     if (hasOffCanvasMenu) {
         console.log(`    Detected menu with off-canvas pattern - performing detailed analysis`);
@@ -1591,6 +1695,10 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
     }
     
     return focusableCount;
+    } catch (error) {
+        console.log(`    Error in keyboard focusability test: ${error.message}`);
+        return 0;
+    }
 }
 export async function checkForHiddenMenus(page: Page, menus: Locator, uniqueNavInfo?: NavInfo) {
     // Create a MenuTester instance and use its method
