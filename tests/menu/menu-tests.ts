@@ -467,10 +467,10 @@ export class MenuTester {
             console.log(`  - Has Aria-labelledby: ${hasLabelledBy ? 'Yes' : 'No'}`);
             
             // Check if the menu is accessible
-            const isAccessible = menuRole === 'navigation' || menuLabel !== '' || hasLabelledBy;
-            console.log(`  - Accessible: ${isAccessible ? '✅ Yes' : '❌ No'}`);
+            const hasAriaAttributes = menuRole === 'navigation' || menuLabel !== '' || hasLabelledBy;
+            console.log(`  - hasAriaAttributes ${hasAriaAttributes ? '✅ Yes' : '❌ No'}`);
             
-            if (isAccessible) {
+            if (hasAriaAttributes) {
                 results.accessibleMenus++;
             }
             
