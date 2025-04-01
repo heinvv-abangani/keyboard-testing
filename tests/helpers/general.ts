@@ -18,7 +18,7 @@ import { Page } from '@playwright/test';
 export async function isElementTrulyVisible(element, considerKeyboardFocus = false, debugElement = false) {
     if (!element) return false;
 
-    const locatorElement = await element.elementHandle();
+    const locatorElement = await element.first().elementHandle();
     if (!locatorElement) return false;
     
     // First check if element is hidden using offsetParent (most reliable method)
