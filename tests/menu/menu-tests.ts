@@ -441,7 +441,7 @@ export class MenuTester {
         
         const results = {
             totalMenus: count,
-            accessibleMenus: 0,
+            menusWithAriaAttributes: 0,
             totalMenuItems: 0,
             keyboardFocusableItems: 0,
             keyboardAccessibleDropdowns: 0,
@@ -471,7 +471,7 @@ export class MenuTester {
             console.log(`  - hasAriaAttributes ${hasAriaAttributes ? '✅ Yes' : '❌ No'}`);
             
             if (hasAriaAttributes) {
-                results.accessibleMenus++;
+                results.menusWithAriaAttributes++;
             }
             
             // Use link count from fingerprint
@@ -489,50 +489,61 @@ export class MenuTester {
             results.totalMenuItems += await links.count();
             results.keyboardFocusableItems += 0;
             
-            // Find dropdown menu items
-            const dropdownItems = menu.locator('li:has(ul), [aria-expanded], [aria-haspopup="true"]');
-            const dropdownCount = await dropdownItems.count();
-            
-            if (dropdownCount > 0) {
-                console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS ===`);
-                
-                for (let j = 0; j < dropdownCount; j++) {
-                    const dropdownItem = dropdownItems.nth(j);
-                    const text = await dropdownItem.textContent() || 'Unnamed dropdown';
-                    
-                    console.log(`\nDropdown ${j + 1}: "${text.trim()}"`);
-                    
-                    // Test keyboard accessibility
-                    const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem);
-                    
-                    if (isKeyboardAccessible) {
-                        results.keyboardAccessibleDropdowns++;
-                        // Update fingerprint data
-                        fingerprint.view.desktop.hasKeyboardDropdowns = true;
-                    } else {
-                        // Test mouse interactions
-                        const isMouseAccessible = await testMouseInteractions(this.page, dropdownItem);
-                        
-                        if (isMouseAccessible) {
-                            results.mouseOnlyDropdowns++;
-                            // Update fingerprint data
-                            fingerprint.view.desktop.hasMouseOnlyDropdowns = true;
-                            console.log(`⚠️ Dropdown is only accessible with mouse interactions`);
-                        } else {
-                            console.log(`❌ Dropdown is not accessible with keyboard or mouse`);
-                        }
-                    }
-                }
-            }
+            // Test menu dropdowns
+            await this.testMenuDropdown(menu, fingerprint, results);
         }
         
         // Generate WCAG evaluation
         console.log(`\n=== WCAG EVALUATION ===`);
         console.log(`2.1.1 Keyboard (Level A): ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
-        console.log(`2.4.5 Multiple Ways (Level AA): ${results.accessibleMenus > 0 ? '✅ PASS' : '❌ FAIL'}`);
-        console.log(`3.2.3 Consistent Navigation (Level AA): ${results.accessibleMenus > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`2.4.5 Multiple Ways (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`3.2.3 Consistent Navigation (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         
         return results;
+    }
+    
+    /**
+     * Test menu dropdowns for keyboard and mouse accessibility
+     */
+    private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any): Promise<void> {
+        // Find dropdown menu items
+        const dropdownItems = menu.locator('li:has(ul), [aria-expanded], [aria-haspopup="true"]');
+        const dropdownCount = await dropdownItems.count();
+        
+        if (dropdownCount > 0) {
+            console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS ===`);
+            
+            for (let j = 0; j < dropdownCount; j++) {
+                const dropdownItem = dropdownItems.nth(j);
+                const text = await dropdownItem.textContent() || '';
+                const textFirstLine = text.split('\n')[0].trim();
+                const linkCount = await dropdownItem.locator('a').count();
+                
+                console.log(`\nDropdown ${j + 1}: "${textFirstLine}"`);
+                console.log(`Link count: "${linkCount}"`);
+                
+                // Test keyboard accessibility
+                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem);
+                
+                if (isKeyboardAccessible) {
+                    results.keyboardAccessibleDropdowns++;
+                    // Update fingerprint data
+                    fingerprint.view.desktop.hasKeyboardDropdowns = true;
+                } else {
+                    // Test mouse interactions
+                    const isMouseAccessible = await testMouseInteractions(this.page, dropdownItem);
+                    
+                    if (isMouseAccessible) {
+                        results.mouseOnlyDropdowns++;
+                        // Update fingerprint data
+                        fingerprint.view.desktop.hasMouseOnlyDropdowns = true;
+                        console.log(`⚠️ Dropdown is only accessible with mouse interactions`);
+                    } else {
+                        console.log(`❌ Dropdown is not accessible with keyboard or mouse`);
+                    }
+                }
+            }
+        }
     }
 }
 
