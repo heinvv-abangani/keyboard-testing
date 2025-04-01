@@ -516,14 +516,14 @@ export class MenuTester {
             for (let j = 0; j < dropdownCount; j++) {
                 const dropdownItem = dropdownItems.nth(j);
                 const text = await dropdownItem.textContent() || '';
-                const textFirstLine = text.split('\n')[0].trim();
+                const title = text.split('\n')[0].trim();
                 const linkCount = await dropdownItem.locator('a').count();
                 
-                console.log(`\nDropdown ${j + 1}: "${textFirstLine}"`);
+                console.log(`\nDropdown ${j + 1}: "${title}"`);
                 console.log(`Link count: "${linkCount}"`);
                 
                 // Test keyboard accessibility
-                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem);
+                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem, title);
                 
                 if (isKeyboardAccessible) {
                     results.keyboardAccessibleDropdowns++;

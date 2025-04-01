@@ -149,26 +149,44 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
 /**
  * Test dropdown keyboard accessibility
  */
-export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Locator): Promise<boolean> {
-    // Get the text of the menu item for logging
-    const text = await menuItem.textContent() || 'Unnamed item';
+export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Locator, title: string): Promise<boolean> {
+    console.log(`\n=== TESTING DROPDOWN KEYBOARD ACCESSIBILITY FOR "${title}" ===`);
     
-    console.log(`\n=== TESTING DROPDOWN KEYBOARD ACCESSIBILITY FOR "${text.trim()}" ===`);
-    
-    // Check if the menu item has aria-expanded attribute
-    const hasAriaExpanded = await menuItem.evaluate(el => el.hasAttribute('aria-expanded'));
-    
-    if (hasAriaExpanded) {
-        console.log(`Menu item has aria-expanded attribute`);
+    // Check if the menu item or any of its descendants has aria-expanded attribute
+    const hasExpandedElement = await menuItem.evaluate(el => {
+        // Check if the element itself has the attribute
+        if (el.hasAttribute('aria-expanded')) {
+            return { self: true };
+        }
+
+        // Check if any descendant has the attribute
+        const descendant = el.querySelector('[aria-expanded]');
+        if (descendant) {
+            return { self: false };
+        }
         
-        // Focus the menu item
-        await menuItem.focus();
+        return null;
+    });
+    
+    if (hasExpandedElement) {
+        // Create a locator for the element with aria-expanded
+        let expandedLocator = menuItem;
+        if (!hasExpandedElement.self) {
+            // If it's a descendant, create a new locator for it
+            expandedLocator = menuItem.locator('[aria-expanded]').first();
+        }
+        
+        console.log(`Found element with aria-expanded attribute`);
+        
+        // Focus the element with aria-expanded
+        await expandedLocator.focus();
+        console.log(`Focused on element with aria-expanded attribute`);
         
         // Press Enter key to expand the dropdown
         await page.keyboard.press('Enter');
         
         // Check if aria-expanded is now true
-        const isExpanded = await menuItem.evaluate(el => el.getAttribute('aria-expanded') === 'true');
+        const isExpanded = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'true');
         
         if (isExpanded) {
             console.log(`✅ Dropdown expanded with Enter key`);
@@ -177,7 +195,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Lo
             await page.keyboard.press('Escape');
             
             // Check if aria-expanded is now false
-            const isCollapsed = await menuItem.evaluate(el => el.getAttribute('aria-expanded') === 'false');
+            const isCollapsed = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'false');
             
             if (isCollapsed) {
                 console.log(`✅ Dropdown collapsed with Escape key`);
@@ -192,7 +210,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Lo
             await page.keyboard.press('Space');
             
             // Check if aria-expanded is now true
-            const isExpandedWithSpace = await menuItem.evaluate(el => el.getAttribute('aria-expanded') === 'true');
+            const isExpandedWithSpace = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'true');
             
             if (isExpandedWithSpace) {
                 console.log(`✅ Dropdown expanded with Space key`);
@@ -201,7 +219,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Lo
                 await page.keyboard.press('Escape');
                 
                 // Check if aria-expanded is now false
-                const isCollapsed = await menuItem.evaluate(el => el.getAttribute('aria-expanded') === 'false');
+                const isCollapsed = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'false');
                 
                 if (isCollapsed) {
                     console.log(`✅ Dropdown collapsed with Escape key`);
@@ -236,21 +254,51 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
     
     console.log(`\n=== TESTING MOUSE INTERACTIONS FOR "${text.trim()}" ===`);
     
-    // Check if the menu item has aria-expanded attribute
-    const hasAriaExpanded = await menuItem.evaluate(el => el.hasAttribute('aria-expanded'));
+    // Check if the menu item or any of its descendants has aria-expanded attribute
+    const expandedElement = await menuItem.evaluate(el => {
+        // Check if the element itself has the attribute
+        if (el.hasAttribute('aria-expanded')) {
+            return {
+                element: el,
+                self: true
+            };
+        }
     
-    if (hasAriaExpanded) {
-        console.log(`Menu item has aria-expanded attribute`);
+        // Check if any descendant has the attribute
+        const descendant = el.querySelector('[aria-expanded]');
+        if (descendant) {
+            return {
+                element: descendant,
+                self: false
+            };
+        }
+        
+        return null;
+    });
+    
+    if (expandedElement) {
+        // Create a locator for the element with aria-expanded
+        let expandedLocator = menuItem;
+        if (!expandedElement.self) {
+            // If it's a descendant, create a new locator for it
+            expandedLocator = menuItem.locator('[aria-expanded]').first();
+        }
+        
+        console.log(`Found element with aria-expanded attribute`);
+        
+        // Focus the element with aria-expanded
+        await expandedLocator.focus();
+        console.log(`Focused on element with aria-expanded attribute`);
         
         // Get initial state
-        const initialState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
-        // Check if the menu item is visible before attempting to hover
-        const isVisible = await isElementTrulyVisible(menuItem);
+        const initialState = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded'));
+        // Check if the element is visible before attempting to hover
+        const isVisible = await isElementTrulyVisible(expandedLocator);
         if (!isVisible) {
-            console.log(`⚠️ Menu item is not visible, skipping hover test`);
+            console.log(`⚠️ Element with aria-expanded is not visible, skipping hover test`);
         } else {
-            // Hover over the menu item
-            await menuItem.hover();
+            // Hover over the element
+            await expandedLocator.hover();
             
             // Wait a moment for any hover effects
             await page.waitForTimeout(500);
@@ -259,18 +307,18 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         
         // Check if aria-expanded changed after hover (only if element was visible)
         if (isVisible) {
-            const hoverState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
+            const hoverState = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded'));
             
             if (hoverState !== initialState) {
                 console.log(`✅ Dropdown responds to hover`);
                 return true;
             }
             
-            // Click the menu item (only if element is visible)
-            await menuItem.click();
+            // Click the element (only if element is visible)
+            await expandedLocator.click();
             
             // Check if aria-expanded changed after click
-            const clickState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
+            const clickState = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded'));
             
             if (clickState !== initialState) {
                 console.log(`✅ Dropdown responds to click`);
