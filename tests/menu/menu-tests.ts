@@ -208,7 +208,7 @@ export class MenuTester {
                     representativeIndex: i,
                     indices: similarIndices,
                     count: similarIndices.length,
-                    selectors: similarIndices.map(idx => navDetails[idx].selector),
+                    selectors: similarIndices.map(idx => navDetails[idx].navSelector),
                     menuId: current.fingerprint.menuId,
                     fingerprint: current.fingerprint
                 });
@@ -228,17 +228,10 @@ export class MenuTester {
      * Find unique nav elements by comparing their content and structure
      */
     async findUniqueNavElements(): Promise<NavInfo> {
-        console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS (INCLUDING HIDDEN MENUS) ===");
-        
-        console.log("\n=== DEBUG: Starting findUniqueNavElements ===");
-        
-        const navInfo = await this.page.evaluate(this.initializeNavElements());
+        const navInfo = await this.page.evaluate(this.initializeNavElements()) as NavInfo;
         
         console.log(`Found ${navInfo.total} nav elements, grouped into ${navInfo.uniqueGroups.length} unique groups`);
-        
-        // Add more detailed logging for debugging
-        console.log("\n=== DEBUG: DETAILED GROUP INFORMATION ===");
-        
+
         for (let i = 0; i < navInfo.uniqueGroups.length; i++) {
             const group = navInfo.uniqueGroups[i];
             console.log(`\nGroup ${i + 1} (${group.count} similar elements):`);
@@ -256,7 +249,6 @@ export class MenuTester {
                 for (let j = 1; j < group.selectors.length; j++) {
                     console.log(`    - ${group.selectors[j]}`);
                     
-                    // Get the original element details for comparison
                     const originalIndex = navInfo.uniqueIndices[i];
                     const compareIndex = group.indices[j];
                     const originalElement = navInfo.fingerprints[originalIndex];
@@ -265,10 +257,7 @@ export class MenuTester {
                 }
             }
         }
-        
-        // Add a final check to verify the uniqueness criteria
-        console.log("\n=== DEBUG: VERIFYING UNIQUENESS CRITERIA ===");
-        
+
         // Check each pair of elements to ensure they're properly grouped
         for (let i = 0; i < navInfo.fingerprints.length; i++) {
             for (let j = i + 1; j < navInfo.fingerprints.length; j++) {
@@ -389,10 +378,21 @@ export class MenuTester {
             console.log(`  - ${menu.name} (ID: ${menu.menuId}, Type: ${menu.type})`);
         });
         
-        // Return both lists in a single array
-        const hiddenMenus = [hiddenOnDesktop, hiddenOnMobile];
+        // Test toggle elements only if there are hidden menus on desktop or mobile
+        let toggleInfo: ToggleInfo | null = null;
+        if (hiddenOnDesktop.length > 0 || hiddenOnMobile.length > 0) {
+            console.log("\n=== TESTING TOGGLE ELEMENTS FOR HIDDEN MENUS ===");
+            toggleInfo = await testToggles(this.page, this.uniqueNavElements);
+        }
         
-        return hiddenMenus;
+        // Return the hidden menus and toggle info
+        const result = {
+            hiddenOnDesktop,
+            hiddenOnMobile,
+            toggleInfo
+        };
+        
+        return [hiddenOnDesktop, hiddenOnMobile, toggleInfo];
     }
     
     /**
@@ -444,8 +444,7 @@ export async function testMenus(page: Page, websiteUrl: string) {
     // Find unique nav elements
     const uniqueNavInfo = await menuTester.findUniqueNavElements();
     
-    // Find toggle elements
-    const toggleInfo = await testToggles(page, uniqueNavInfo);
+    // Toggle elements are now tested in checkForHiddenMenus if hidden menus exist
     
     // Find all menus
     const menus = page.locator('nav, [role="navigation"], .menu, .nav, .navigation');
@@ -459,7 +458,6 @@ export async function testMenus(page: Page, websiteUrl: string) {
     // Return the results
     return {
         uniqueNavInfo,
-        toggleInfo,
         hiddenMenus
     };
 }
