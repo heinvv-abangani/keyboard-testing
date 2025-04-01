@@ -827,260 +827,86 @@ class MenuTester {
      * Check for hidden menus controlled by buttons without aria-controls
      * or non-button elements with aria-expanded
      */
-    async checkForHiddenMenus(menus: Locator): Promise<any[]> {
+    async checkForHiddenMenus(menus?: Locator): Promise<any[]> {
         console.log("\n=== CHECKING FOR HIDDEN MENUS ===");
         
-        // First, analyze all menus to determine their visibility - for accessibility testing,
-        // we'll consider all menus visible even if they might be technically hidden by CSS
-        const menuDetails = await this.analyzeMenuVisibility(menus);
+        // Check if uniqueNavElements exists
+        if (!this.uniqueNavElements) {
+            console.log("No nav elements found. Run findUniqueNavElements() first.");
+            return [];
+        }
         
-        // Get all elements with aria-expanded or aria-controls attributes
-        const toggleElements = await this.page.evaluate(() => {
-            const toggles = Array.from(document.querySelectorAll('[aria-expanded], [aria-controls]'));
-            return toggles.map(toggle => {
-                const ariaControls = toggle.getAttribute('aria-controls');
-                const ariaExpanded = toggle.getAttribute('aria-expanded');
-                const id = toggle.id;
-                const classes = Array.from(toggle.classList).join(' ');
-                const tagName = toggle.tagName.toLowerCase();
-                
-                return {
-                    id,
-                    classes,
-                    tagName,
-                    ariaControls,
-                    ariaExpanded
-                };
-            });
+        // Initialize arrays to store hidden menus
+        const hiddenOnDesktop: any[] = [];
+        const hiddenOnMobile: any[] = [];
+        
+        // Loop through unique nav groups
+        for (const group of this.uniqueNavElements.uniqueGroups) {
+            const { fingerprint, menuId } = group;
+            
+            // Check desktop visibility
+            if (!fingerprint.view.desktop.visibility) {
+                hiddenOnDesktop.push({
+                    menuId,
+                    name: fingerprint.name,
+                    selector: `[data-menu-id="${menuId}"]`,
+                    type: fingerprint.view.desktop.menuType
+                });
+            }
+            
+            // Check mobile visibility
+            if (!fingerprint.view.mobile.visibility) {
+                hiddenOnMobile.push({
+                    menuId,
+                    name: fingerprint.name,
+                    selector: `[data-menu-id="${menuId}"]`,
+                    type: fingerprint.view.mobile.menuType
+                });
+            }
+        }
+        
+        // If menus parameter is provided, analyze additional menus
+        if (menus) {
+            console.log("\nAnalyzing additional menus from provided Locator...");
+            const additionalMenus = await this.analyzeMenuVisibility(menus);
+            
+            // Add any additional hidden menus found
+            if (additionalMenus && additionalMenus.length > 0) {
+                for (const menu of additionalMenus) {
+                    if (!menu.isVisibleDesktop) {
+                        hiddenOnDesktop.push({
+                            menuId: menu.id || 'unknown',
+                            name: menu.name || 'Unnamed Menu',
+                            selector: menu.selector,
+                            type: 'Unknown'
+                        });
+                    }
+                    
+                    if (!menu.isVisibleMobile) {
+                        hiddenOnMobile.push({
+                            menuId: menu.id || 'unknown',
+                            name: menu.name || 'Unnamed Menu',
+                            selector: menu.selector,
+                            type: 'Unknown'
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Log results
+        console.log(`\nMenus hidden on desktop (${hiddenOnDesktop.length}):`);
+        hiddenOnDesktop.forEach(menu => {
+            console.log(`  - ${menu.name} (ID: ${menu.menuId}, Type: ${menu.type})`);
         });
         
-        console.log(`Found ${toggleElements.length} elements with aria-expanded or aria-controls attributes`);
+        console.log(`\nMenus hidden on mobile (${hiddenOnMobile.length}):`);
+        hiddenOnMobile.forEach(menu => {
+            console.log(`  - ${menu.name} (ID: ${menu.menuId}, Type: ${menu.type})`);
+        });
         
-        // Check for hidden menus controlled by buttons
-        const hiddenMenus: any[] = [];
-        
-        // First, check for menus that are hidden on desktop but visible on mobile
-        if (this.uniqueNavElements) {
-            for (const fingerprint of this.uniqueNavElements.fingerprints) {
-                // Check if the menu is hidden on desktop but visible on mobile
-                if (!fingerprint.view.desktop.visibility && fingerprint.view.mobile.visibility) {
-                    hiddenMenus.push({
-                        menuId: fingerprint.menuId,
-                        name: fingerprint.name,
-                        isHiddenOnDesktop: true,
-                        isVisibleOnMobile: true,
-                        type: 'responsive-menu'
-                    });
-                }
-                
-                // Check if the menu is visible on desktop but hidden on mobile
-                if (fingerprint.view.desktop.visibility && !fingerprint.view.mobile.visibility) {
-                    hiddenMenus.push({
-                        menuId: fingerprint.menuId,
-                        name: fingerprint.name,
-                        isHiddenOnDesktop: false,
-                        isVisibleOnMobile: false,
-                        type: 'desktop-only-menu'
-                    });
-                }
-            }
-        }
-        
-        // Next, check for menus controlled by aria-controls
-        for (const toggle of toggleElements) {
-            if (toggle.ariaControls) {
-                // Check if this toggle controls a menu that's not already in our list
-                const controlledElement = await this.page.evaluate((controlId) => {
-                    const element = document.getElementById(controlId);
-                    if (!element) return null;
-                    
-                    // Check if it's a menu-like element
-                    const isMenuLike =
-                        element.tagName.toLowerCase() === 'nav' ||
-                        element.getAttribute('role') === 'navigation' ||
-                        element.classList.contains('menu') ||
-                        element.classList.contains('nav') ||
-                        element.querySelectorAll('a').length > 0;
-                    
-                    if (!isMenuLike) return null;
-                    
-                    // Check if it's currently hidden
-                    const style = window.getComputedStyle(element);
-                    const isHidden =
-                        style.display === 'none' ||
-                        style.visibility === 'hidden' ||
-                        parseFloat(style.opacity) === 0 ||
-                        element.getAttribute('aria-hidden') === 'true';
-                    
-                    if (!isHidden) return null;
-                    
-                    return {
-                        id: element.id,
-                        classes: Array.from(element.classList).join(' '),
-                        tagName: element.tagName.toLowerCase(),
-                        linkCount: element.querySelectorAll('a').length
-                    };
-                }, toggle.ariaControls);
-                
-                interface ControlledElement {
-                    id?: string;
-                    classes?: string;
-                    tagName?: string;
-                    linkCount?: number;
-                }
-                
-                if (controlledElement) {
-                    const typedElement = controlledElement as ControlledElement;
-                    // Check if this menu is already in our list
-                    const alreadyListed = hiddenMenus.some(menu =>
-                        menu.menuId === toggle.ariaControls ||
-                        (typedElement.id && menu.menuId === typedElement.id)
-                    );
-                    
-                    if (!alreadyListed) {
-                        hiddenMenus.push({
-                            menuId: toggle.ariaControls,
-                            name: `Menu controlled by ${toggle.tagName}${toggle.id ? '#'+toggle.id : ''}${toggle.classes ? '.'+toggle.classes.replace(/ /g, '.') : ''}`,
-                            isHiddenOnDesktop: true, // Assuming it's hidden since it's controlled by aria-controls
-                            isVisibleOnMobile: false, // We don't know for sure
-                            type: 'aria-controlled-menu',
-                            toggleElement: `${toggle.tagName}${toggle.id ? '#'+toggle.id : ''}${toggle.classes ? '.'+toggle.classes.replace(/ /g, '.') : ''}`,
-                            linkCount: typedElement.linkCount || 0
-                        });
-                    }
-                }
-            }
-        }
-        
-        // Finally, check for elements with aria-expanded="false"
-        for (const toggle of toggleElements) {
-            if (toggle.ariaExpanded === 'false') {
-                // This toggle is controlling something that's currently collapsed
-                // Try to find what it's controlling
-                const controlledElement = await this.page.evaluate((data) => {
-                    const toggle = document.getElementById(data.toggleId) ||
-                                  (data.toggleClasses ? document.querySelector(`.${data.toggleClasses.replace(/ /g, '.')}`) : null);
-                    if (!toggle) return null;
-                    
-                    // Look for the next sibling that could be a menu
-                    let sibling = toggle.nextElementSibling;
-                    while (sibling) {
-                        // Check if it's a menu-like element
-                        const isMenuLike =
-                            sibling.tagName.toLowerCase() === 'nav' ||
-                            sibling.getAttribute('role') === 'navigation' ||
-                            sibling.classList.contains('menu') ||
-                            sibling.classList.contains('nav') ||
-                            sibling.querySelectorAll('a').length > 0;
-                        
-                        if (isMenuLike) {
-                            return {
-                                id: sibling.id,
-                                classes: Array.from(sibling.classList).join(' '),
-                                tagName: sibling.tagName.toLowerCase(),
-                                linkCount: sibling.querySelectorAll('a').length
-                            };
-                        }
-                        
-                        sibling = sibling.nextElementSibling;
-                    }
-                    
-                    // Look for a child that could be a menu
-                    const childMenu = toggle.querySelector('nav, [role="navigation"], .menu, .nav, ul');
-                    if (childMenu) {
-                        return {
-                            id: childMenu.id,
-                            classes: Array.from(childMenu.classList).join(' '),
-                            tagName: childMenu.tagName.toLowerCase(),
-                            linkCount: childMenu.querySelectorAll('a').length
-                        };
-                    }
-                    
-                    return null;
-                }, { toggleId: toggle.id, toggleClasses: toggle.classes });
-                
-                interface ControlledElement {
-                    id?: string;
-                    classes?: string;
-                    tagName?: string;
-                    linkCount?: number;
-                }
-                
-                if (controlledElement) {
-                    const typedElement = controlledElement as ControlledElement;
-                    // Check if this menu is already in our list
-                    const alreadyListed = hiddenMenus.some(menu =>
-                        (typedElement.id && menu.menuId === typedElement.id) ||
-                        (typedElement.classes && menu.name.includes(typedElement.classes))
-                    );
-                    
-                    if (!alreadyListed) {
-                        hiddenMenus.push({
-                            menuId: typedElement.id || `menu-controlled-by-${toggle.id || toggle.classes}`,
-                            name: `Menu controlled by ${toggle.tagName}${toggle.id ? '#'+toggle.id : ''}${toggle.classes ? '.'+toggle.classes.replace(/ /g, '.') : ''}`,
-                            isHiddenOnDesktop: true, // Assuming it's hidden since aria-expanded is false
-                            isVisibleOnMobile: false, // We don't know for sure
-                            type: 'aria-expanded-menu',
-                            toggleElement: `${toggle.tagName}${toggle.id ? '#'+toggle.id : ''}${toggle.classes ? '.'+toggle.classes.replace(/ /g, '.') : ''}`,
-                            linkCount: typedElement.linkCount || 0
-                        });
-                    }
-                }
-            }
-        }
-        
-        // Log the results
-        console.log(`\n--- Menu Items Analysis ---`);
-        
-        // Analyze each menu's items
-        for (let i = 0; i < await menus.count(); i++) {
-            const menu = menus.nth(i);
-            
-            // Get menu ID and aria-label for identification
-            const menuId = await menu.evaluate((el, index) => el.id || `menu-${index+1}`, i);
-            const menuAriaLabel = await menu.evaluate(el => el.getAttribute('aria-label') || '');
-            const menuIdentifier = menuAriaLabel ?
-                `${menuId} (aria-label: "${menuAriaLabel}")` :
-                menuId;
-            
-            // Get all links in the menu
-            const links = menu.locator('a, button, [role="menuitem"]');
-            const linkCount = await links.count();
-            
-            // For each link, check visibility and report
-            for (let j = 0; j < linkCount; j++) {
-                const link = links.nth(j);
-                const linkText = await link.textContent() || await link.getAttribute('aria-label') || `Link ${j+1}`;
-                const linkHref = await link.getAttribute('href') || '#';
-                
-                // For accessibility testing, we'll consider all menu items visible
-                // even if they might be technically hidden by CSS
-                console.log(`    Link ${j+1}: Text = "${linkText}", Href = ${linkHref}, Visible = true`);
-            }
-            
-            // Report total menu items
-            console.log(`Menu items: ${linkCount}, Visible items = ${linkCount}`);
-        }
-        // Log the results
-        if (hiddenMenus.length > 0) {
-            console.log(`\nFound ${hiddenMenus.length} hidden menus:`);
-            for (let i = 0; i < hiddenMenus.length; i++) {
-                const menu = hiddenMenus[i];
-                console.log(`\nHidden Menu ${i + 1} (ID: ${menu.menuId}):`);
-                console.log(`  - Name: ${menu.name}`);
-                console.log(`  - Type: ${menu.type}`);
-                console.log(`  - Hidden on Desktop: ${menu.isHiddenOnDesktop}`);
-                console.log(`  - Visible on Mobile: ${menu.isVisibleOnMobile}`);
-                if (menu.toggleElement) {
-                    console.log(`  - Toggle Element: ${menu.toggleElement}`);
-                }
-                if (menu.linkCount) {
-                    console.log(`  - Link Count: ${menu.linkCount}`);
-                }
-            }
-        } else {
-            console.log(`\nNo hidden menus found.`);
-        }
+        // Return both lists in a single array
+        const hiddenMenus = [hiddenOnDesktop, hiddenOnMobile];
         
         return hiddenMenus;
     }
@@ -1184,25 +1010,7 @@ export async function testMenus(page: Page, websiteUrl: string) {
             console.log(`  - Link count: ${fingerprint.linkCount}`);
         }
         
-        // Find toggle elements
-        const toggleInfo = await menuTester.findToggleElements();
-        console.log(`\n=== FOUND ${toggleInfo.total} TOGGLE ELEMENT(S) ===`);
-        
-        // Connect toggles to menus
-        console.log(`\n=== CONNECTING TOGGLES TO MENUS ===`);
-        
-        // Test toggle accessibility
-        console.log(`\n=== TESTING TOGGLE ACCESSIBILITY ===`);
-        
-        // Filter to only include the unique representative nav elements
-        const uniqueNavSelector = uniqueNavInfo.menuIds
-            .map(menuId => `[data-menu-id="${menuId}"]`)
-            .join(', ');
-        
-        // Create a locator with only the unique nav elements
-        const menus = page.locator(uniqueNavSelector);
-        
-        console.log(`\n=== FOUND ${uniqueNavInfo.uniqueGroups.length} MENU(S) ===`);
+    
         
         // Collect menu information for consistency
         console.log(`\n=== COLLECTING MENU INFORMATION FOR CONSISTENCY ===`);
@@ -1423,9 +1231,29 @@ export async function testMenus(page: Page, websiteUrl: string) {
         
         // Check for hidden menus controlled by buttons without aria-controls
         // or non-button elements with aria-expanded
-        const hiddenMenus = await menuTester.checkForHiddenMenus(menus);
+        const hiddenMenus = await menuTester.checkForHiddenMenus();
         if (hiddenMenus.length > 0) {
             console.log(`\n=== FOUND ${hiddenMenus.length} ADDITIONAL HIDDEN MENU(S) ===`);
+
+                // Find toggle elements
+        const toggleInfo = await menuTester.findToggleElements();
+        console.log(`\n=== FOUND ${toggleInfo.total} TOGGLE ELEMENT(S) ===`);
+        
+        // Connect toggles to menus
+        console.log(`\n=== CONNECTING TOGGLES TO MENUS ===`);
+        
+        // Test toggle accessibility
+        console.log(`\n=== TESTING TOGGLE ACCESSIBILITY ===`);
+        
+        // Filter to only include the unique representative nav elements
+        const uniqueNavSelector = uniqueNavInfo.menuIds
+            .map(menuId => `[data-menu-id="${menuId}"]`)
+            .join(', ');
+        
+        // Create a locator with only the unique nav elements
+        const menus = page.locator(uniqueNavSelector);
+        
+        console.log(`\n=== FOUND ${uniqueNavInfo.uniqueGroups.length} MENU(S) ===`);
         }
         
         // Generate WCAG evaluation
