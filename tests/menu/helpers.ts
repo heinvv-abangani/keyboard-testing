@@ -3,36 +3,10 @@ import { isElementTrulyVisible } from '../helpers/general';
 
 /**
  * Check if a menu is visible
- * Enhanced version of the menu visibility check that's more lenient with navigation menus
- * This function considers a menu visible if it has items, even if the container might be hidden
+ * Uses isElementTrulyVisible which handles all edge cases including fixed positioning
  */
 export async function isMenuVisible(page: Page, menu: Locator): Promise<boolean> {
-    // First check if the menu itself is visible
-    const isVisible = await isElementTrulyVisible(menu);
-    
-    if (isVisible) {
-        return true;
-    }
-    
-    // If the menu itself is not visible, check if it has visible items
-    const menuItems = menu.locator('a, button');
-    const count = await menuItems.count();
-    
-    if (count === 0) {
-        return false;
-    }
-    
-    // Check if any menu items are visible
-    for (let i = 0; i < count; i++) {
-        const item = menuItems.nth(i);
-        const isItemVisible = await isElementTrulyVisible(item);
-        
-        if (isItemVisible) {
-            return true;
-        }
-    }
-    
-    return false;
+    return await isElementTrulyVisible(menu, true);
 }
 
 /**
@@ -57,7 +31,7 @@ export async function countVisibleDropdownItems(page: Page, parentElement: Locat
         
         for (let j = 0; j < itemCount; j++) {
             const item = items.nth(j);
-            const isVisible = await isElementTrulyVisible(item);
+            const isVisible = await isElementTrulyVisible(item, true);
             
             if (isVisible) {
                 visibleItems++;

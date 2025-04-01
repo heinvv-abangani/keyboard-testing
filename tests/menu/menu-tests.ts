@@ -371,7 +371,7 @@ export class MenuTester {
         
         for (let i = 0; i < count; i++) {
             const menu = menus.nth(i);
-            const isVisibleDesktop = await isMenuVisible(this.page, menu);
+            const isVisibleDesktop = await isElementTrulyVisible(menu);
             
             // Get menu information
             const menuInfo = await menu.evaluate(el => {
