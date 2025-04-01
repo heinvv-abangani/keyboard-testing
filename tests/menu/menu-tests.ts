@@ -291,7 +291,6 @@ export class MenuTester {
             }
         }
         
-        // Store the unique nav elements in the class property
         this.uniqueNavElements = navInfo;
         
         return navInfo;
@@ -424,6 +423,117 @@ export class MenuTester {
         
         return menuDetails;
     }
+    
+    /**
+     * Iterate through menus
+     */
+    async iterateMenus(): Promise<any> {
+        console.log("\n=== ITERATING THROUGH MENUS ===");
+        
+        // Check if uniqueNavElements exists
+        if (!this.uniqueNavElements) {
+            console.log("No nav elements found. Run findUniqueNavElements() first.");
+            return {};
+        }
+        
+        const count = this.uniqueNavElements.uniqueGroups.length;
+        console.log(`\n=== FOUND ${count} UNIQUE MENU ELEMENTS ===`);
+        
+        const results = {
+            totalMenus: count,
+            accessibleMenus: 0,
+            totalMenuItems: 0,
+            keyboardFocusableItems: 0,
+            keyboardAccessibleDropdowns: 0,
+            mouseOnlyDropdowns: 0
+        };
+        
+        for (let i = 0; i < count; i++) {
+            const group = this.uniqueNavElements.uniqueGroups[i];
+            const fingerprint = group.fingerprint;
+            const menuSelector = `[data-menu-id="${group.menuId}"]`;
+            const menu = this.page.locator(menuSelector);
+            
+            // Get menu attributes from the fingerprint
+            const menuId = fingerprint.id || '';
+            const menuRole = fingerprint.ariaAttributes.roleValue || '';
+            const menuLabel = fingerprint.ariaAttributes.ariaLabelText || '';
+            const hasLabelledBy = fingerprint.ariaAttributes.hasAriaLabelledBy;
+            
+            console.log(`\nMenu ${i + 1}:`);
+            console.log(`  - ID: ${menuId || 'None'}`);
+            console.log(`  - Role: ${menuRole || 'None'}`);
+            console.log(`  - Aria-label: ${menuLabel || 'None'}`);
+            console.log(`  - Has Aria-labelledby: ${hasLabelledBy ? 'Yes' : 'No'}`);
+            
+            // Check if the menu is accessible
+            const isAccessible = menuRole === 'navigation' || menuLabel !== '' || hasLabelledBy;
+            console.log(`  - Accessible: ${isAccessible ? '✅ Yes' : '❌ No'}`);
+            
+            if (isAccessible) {
+                results.accessibleMenus++;
+            }
+            
+            // Use link count from fingerprint
+            const linkCount = fingerprint.linkCount;
+            
+            // Find all links in the menu
+            const links = menu.locator('a');
+            
+            // Test keyboard focusability
+            // const focusabilityResults = await testKeyboardFocusability(this.page, links);
+            
+            // results.totalMenuItems += focusabilityResults.totalMenuItems;
+            // results.keyboardFocusableItems += focusabilityResults.keyboardFocusableItems;
+
+            results.totalMenuItems += await links.count();
+            results.keyboardFocusableItems += 0;
+            
+            // Find dropdown menu items
+            const dropdownItems = menu.locator('li:has(ul), [aria-expanded], [aria-haspopup="true"]');
+            const dropdownCount = await dropdownItems.count();
+            
+            if (dropdownCount > 0) {
+                console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS ===`);
+                
+                for (let j = 0; j < dropdownCount; j++) {
+                    const dropdownItem = dropdownItems.nth(j);
+                    const text = await dropdownItem.textContent() || 'Unnamed dropdown';
+                    
+                    console.log(`\nDropdown ${j + 1}: "${text.trim()}"`);
+                    
+                    // Test keyboard accessibility
+                    const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem);
+                    
+                    if (isKeyboardAccessible) {
+                        results.keyboardAccessibleDropdowns++;
+                        // Update fingerprint data
+                        fingerprint.view.desktop.hasKeyboardDropdowns = true;
+                    } else {
+                        // Test mouse interactions
+                        const isMouseAccessible = await testMouseInteractions(this.page, dropdownItem);
+                        
+                        if (isMouseAccessible) {
+                            results.mouseOnlyDropdowns++;
+                            // Update fingerprint data
+                            fingerprint.view.desktop.hasMouseOnlyDropdowns = true;
+                            console.log(`⚠️ Dropdown is only accessible with mouse interactions`);
+                        } else {
+                            console.log(`❌ Dropdown is not accessible with keyboard or mouse`);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Generate WCAG evaluation
+        console.log(`\n=== WCAG EVALUATION ===`);
+        console.log(`2.1.1 Keyboard (Level A): ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`2.4.5 Multiple Ways (Level AA): ${results.accessibleMenus > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`3.2.3 Consistent Navigation (Level AA): ${results.accessibleMenus > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        
+        return results;
+    }
 }
 
 /**
@@ -442,122 +552,17 @@ export async function testMenus(page: Page, websiteUrl: string) {
     const menuTester = new MenuTester(page);
     
     // Find unique nav elements
-    const uniqueNavInfo = await menuTester.findUniqueNavElements();
-    
-    // Toggle elements are now tested in checkForHiddenMenus if hidden menus exist
-    
-    // Find all menus
-    const menus = page.locator('nav, [role="navigation"], .menu, .nav, .navigation');
-    
-    // Iterate through menus
-    await iterateMenus(page, menus, uniqueNavInfo);
+    await menuTester.findUniqueNavElements();
+
+    // Iterate through menus using the uniqueNavElements data
+    await menuTester.iterateMenus();
     
     // Check for hidden menus
-    const hiddenMenus = await menuTester.checkForHiddenMenus(menus);
+    const hiddenMenus = await menuTester.checkForHiddenMenus();
     
     // Return the results
     return {
-        uniqueNavInfo,
+        uniqueNavInfo: menuTester.uniqueNavElements,
         hiddenMenus
     };
-}
-
-/**
- * Iterate through menus
- */
-export async function iterateMenus(page: Page, menus: Locator, uniqueNavInfo?: NavInfo) {
-    const count = await menus.count();
-    console.log(`\n=== FOUND ${count} MENU ELEMENTS ===`);
-    
-    const results = {
-        totalMenus: count,
-        accessibleMenus: 0,
-        totalMenuItems: 0,
-        keyboardFocusableItems: 0,
-        keyboardAccessibleDropdowns: 0,
-        mouseOnlyDropdowns: 0
-    };
-    
-    for (let i = 0; i < count; i++) {
-        const menu = menus.nth(i);
-        
-        // Get menu attributes
-        const menuId = await menu.getAttribute('id') || '';
-        const menuRole = await menu.getAttribute('role') || '';
-        const menuLabel = await menu.getAttribute('aria-label') || '';
-        const menuLabelledBy = await menu.getAttribute('aria-labelledby') || '';
-        
-        console.log(`\nMenu ${i + 1}:`);
-        console.log(`  - ID: ${menuId || 'None'}`);
-        console.log(`  - Role: ${menuRole || 'None'}`);
-        console.log(`  - Aria-label: ${menuLabel || 'None'}`);
-        console.log(`  - Aria-labelledby: ${menuLabelledBy || 'None'}`);
-        
-        // Check if the menu is accessible
-        const isAccessible = menuRole === 'navigation' || menuLabel !== '' || menuLabelledBy !== '';
-        console.log(`  - Accessible: ${isAccessible ? '✅ Yes' : '❌ No'}`);
-        
-        if (isAccessible) {
-            results.accessibleMenus++;
-        }
-        
-        // Find all links in the menu
-        const links = menu.locator('a');
-        const linkCount = await links.count();
-        
-        // Test keyboard focusability
-        const focusabilityResults = await testKeyboardFocusability(page, links);
-        
-        results.totalMenuItems += focusabilityResults.totalMenuItems;
-        results.keyboardFocusableItems += focusabilityResults.keyboardFocusableItems;
-        
-        // Find dropdown menu items
-        const dropdownItems = menu.locator('li:has(ul), [aria-expanded], [aria-haspopup="true"]');
-        const dropdownCount = await dropdownItems.count();
-        
-        if (dropdownCount > 0) {
-            console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS ===`);
-            
-            for (let j = 0; j < dropdownCount; j++) {
-                const dropdownItem = dropdownItems.nth(j);
-                const text = await dropdownItem.textContent() || 'Unnamed dropdown';
-                
-                console.log(`\nDropdown ${j + 1}: "${text.trim()}"`);
-                
-                // Test keyboard accessibility
-                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(page, dropdownItem);
-                
-                if (isKeyboardAccessible) {
-                    results.keyboardAccessibleDropdowns++;
-                } else {
-                    // Test mouse interactions
-                    const isMouseAccessible = await testMouseInteractions(page, dropdownItem);
-                    
-                    if (isMouseAccessible) {
-                        results.mouseOnlyDropdowns++;
-                        console.log(`⚠️ Dropdown is only accessible with mouse interactions`);
-                    } else {
-                        console.log(`❌ Dropdown is not accessible with keyboard or mouse`);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Check for hidden menus controlled by buttons without aria-controls
-    // or non-button elements with aria-expanded
-    const menuTester = new MenuTester(page);
-    menuTester.uniqueNavElements = uniqueNavInfo || null;
-    const hiddenMenus = await menuTester.checkForHiddenMenus();
-    if (hiddenMenus[0].length > 0 || hiddenMenus[1].length > 0) {
-        console.log(`\n=== FOUND ADDITIONAL HIDDEN MENU(S) ===`);
-    }
-    
-    // Generate WCAG evaluation
-    console.log(`\n=== WCAG EVALUATION ===`);
-    console.log(`2.1.1 Keyboard (Level A): ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
-    console.log(`2.4.5 Multiple Ways (Level AA): ${results.accessibleMenus > 0 ? '✅ PASS' : '❌ FAIL'}`);
-    console.log(`3.2.3 Consistent Navigation (Level AA): ${results.accessibleMenus > 0 ? '✅ PASS' : '❌ FAIL'}`);
-    
-    return results;
 }
