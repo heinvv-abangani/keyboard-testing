@@ -197,7 +197,7 @@ export class ToggleTester {
                 };
                 
                 // Create a simple selector for identification
-                const selector = `${fingerprint.tagName}${fingerprint.id ? '#'+fingerprint.id : ''}${fingerprint.classes ? '.'+fingerprint.classes.replace(/ /g, '.') : ''}`;
+                const selector = `[data-toggle-id="${fingerprint.toggleId}"]`;
                 
                 toggleDetails.push({
                     selector,

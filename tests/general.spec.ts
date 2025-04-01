@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { testMenus } from './helpers/menu.ts';
+import { testMenus } from './menu/menu-tests.ts';
 import { testSkipLinks } from './test-steps/skip-link.ts';
 import { testFocusOutline } from './test-steps/focus-outline.ts';
 import { testMenuScreenReaderAccessibility } from './screen-reader-test.ts';

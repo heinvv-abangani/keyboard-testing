@@ -1,5 +1,6 @@
 import { Page, Locator } from "@playwright/test";
 import { isElementTrulyVisible } from '../helpers/general';
+import { MenuType } from "./menu-types";
 
 /**
  * Check if a menu is visible
@@ -329,6 +330,28 @@ export async function testAriaControlsDropdowns(page: Page, menuItem: Locator): 
     if (visibilityAfterEnter !== initialVisibility) {
         console.log(`✅ Controlled element visibility changed after pressing Enter`);
         return true;
+    }
+    
+    /**
+     * Check visibility of an element (for use in browser context)
+     * This is a simplified version of isElementTrulyVisible that can be used in page.evaluate()
+     */
+    function checkVisibility(element: Element): boolean {
+        // Check if element is hidden using offsetParent (most reliable method)
+        const isHidden = (element as HTMLElement).offsetParent === null;
+        
+        if (isHidden) {
+            return false;
+        }
+        
+        // Check computed style for any element
+        const style = window.getComputedStyle(element);
+        const isHiddenByCSS =
+            style.display === 'none' ||
+            style.visibility === 'hidden' ||
+            parseFloat(style.opacity) === 0;
+        
+        return !isHiddenByCSS;
     }
     
     // Try with Space key

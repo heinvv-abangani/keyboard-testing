@@ -5,9 +5,9 @@ import { getConfigByUrl } from "../config";
 import { NavInfo, NavFingerprint, MenuType } from "./menu-types";
 import { ToggleInfo } from "./toggle-types";
 import { ToggleTester, testToggles } from "./toggle";
-import { 
-    isMenuVisible, 
-    countVisibleDropdownItems, 
+import {
+    isMenuVisible,
+    countVisibleDropdownItems,
     checkCombinedVisibility,
     iterateMenuItems,
     testKeyboardFocusability,
@@ -37,7 +37,20 @@ export class MenuTester {
     async findUniqueNavElements(): Promise<NavInfo> {
         console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS (INCLUDING HIDDEN MENUS) ===");
         
+        console.log("\n=== DEBUG: Starting findUniqueNavElements ===");
+        
         const navInfo = await this.page.evaluate(() => {
+            // Define determineMenuType function in the browser context
+            const determineMenuType = (nav: Element, isDesktop: boolean) => {
+                const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
+
+                if (hasDropdowns) {
+                    return "DropdownMenu";
+                } else {
+                    return "SimpleMenu";
+                }
+            };
+            
             // Include hidden menus by also selecting elements with aria-expanded and aria-controls attributes
             const navElements = Array.from(document.querySelectorAll(
                 'nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'
@@ -50,60 +63,18 @@ export class MenuTester {
                     nav.setAttribute('data-menu-id', `menu-${index + 1}`);
                 }
             });
-            
+
             for (const nav of navElements) {
-                // Function to determine menu type based on characteristics
-                const determineMenuType = (nav: Element, isDesktop: boolean) => {
-                    // Check if it has dropdown elements
-                    const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
-                    
-                    // Check if it's toggle-based (controlled by a button or has aria-expanded)
-                    const isToggleBased =
-                        document.querySelector(`[aria-controls="${nav.id}"]`) !== null ||
-                        nav.querySelectorAll('[aria-expanded]').length > 0 ||
-                        nav.closest('[aria-expanded]') !== null;
-                    
-                    // Mobile view is more likely to be toggle-based
-                    const isLikelyToggleBased = !isDesktop || isToggleBased;
-                    
-                    // Determine the menu type
-                    if (isLikelyToggleBased && hasDropdowns) {
-                        return "ToggleBasedDropdownMenu";
-                    } else if (isLikelyToggleBased) {
-                        return "ToggleBasedSimpleMenu";
-                    } else if (hasDropdowns) {
-                        return "DropdownMenu";
-                    } else {
-                        return "SimpleMenu";
-                    }
-                };
-                
-                // Determine visibility based on offsetParent, display, and visibility properties
                 const isVisible = (nav: Element) => {
-                    // Check if element is hidden using offsetParent (most reliable method)
-                    const isHidden = (nav as HTMLElement).offsetParent === null;
+                    const isHidden = !(nav as HTMLElement).checkVisibility;
+
                     if (isHidden) {
                         const classes = Array.from(nav.classList);
                         console.log(`Nav element with class ${classes.join('.')} is hidden (offsetParent is null)`);
                         return false;
                     }
-                    
-                    // Check if we're on desktop (viewport width >= 1025px)
-                    const isDesktopViewport = window.innerWidth >= 1025;
-                    
-                    // Check for dropdown menus that might be hidden on desktop via media queries
-                    const classes = Array.from(nav.classList);
-                    const isLikelyMobileMenu = classes.some(cls =>
-                        cls.includes('mobile') ||
-                        cls.includes('dropdown') ||
-                        cls.includes('menu--tablet')
-                    );
-                    
-                    // Check computed style for any element
-                    const style = window.getComputedStyle(nav);
-                    const isHiddenByCSS = style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
-                    
-                    return !isHiddenByCSS;
+
+                    return true;
                 };
                 
                 // Count links in the nav element
@@ -114,9 +85,7 @@ export class MenuTester {
                 const fingerprint = {
                     menuId: (nav as HTMLElement).dataset.menuId,
                     name: nav.getAttribute('aria-label') || `Menu ${(nav as HTMLElement).dataset.menuId}`,
-                    toggleId: '', // Will be set later if found
-                    
-                    // View-specific information for desktop and mobile
+                    toggleId: '',
                     view: {
                         desktop: {
                             menuType: determineMenuType(nav, true) as MenuType,
@@ -141,23 +110,15 @@ export class MenuTester {
                             position: ''
                         }
                     },
-                    
-                    // Basic selector information
                     tagName: nav.tagName.toLowerCase(),
                     id: nav.id,
                     classes: Array.from(nav.classList).join(' '),
-                    
-                    // Content information
                     linkCount: links.length,
                     linkTexts: linkTexts,
-                    
-                    // Structure information
                     childrenCount: nav.children.length,
                     childrenTypes: Array.from(nav.children).map(child => child.tagName.toLowerCase()).join(', '),
                     parentId: nav.parentElement?.id || '',
                     parentClass: nav.parentElement?.className || '',
-                    
-                    // Accessibility attributes
                     ariaAttributes: {
                         hasAriaExpanded: nav.hasAttribute('aria-expanded'),
                         hasAriaControls: nav.hasAttribute('aria-controls'),
@@ -168,8 +129,6 @@ export class MenuTester {
                         roleValue: nav.getAttribute('role') || '',
                         hasAriaPopup: nav.hasAttribute('aria-haspopup')
                     },
-                    
-                    // Interaction behavior for desktop
                     interactionBehavior: {
                         opensOnEnter: false,
                         opensOnSpace: false,
@@ -178,8 +137,6 @@ export class MenuTester {
                         closesOnEscape: false,
                         closesOnClickOutside: false
                     },
-                    
-                    // Interaction behavior for mobile
                     interactionBehaviorMobile: {
                         opensOnEnter: false,
                         opensOnSpace: false,
@@ -187,16 +144,13 @@ export class MenuTester {
                         closesOnEscape: false,
                         closesOnTapOutside: false
                     },
-                    
-                    // Notes about the menu
                     notes: []
                 };
                 
-                // Create a simple selector for identification
-                const selector = `${fingerprint.tagName}${fingerprint.id ? '#'+fingerprint.id : ''}${fingerprint.classes ? '.'+fingerprint.classes.replace(/ /g, '.') : ''}`;
+                const navSelector = `[data-menu-id="${fingerprint.menuId}"]`;
                 
                 navDetails.push({
-                    selector,
+                    navSelector,
                     fingerprint,
                     element: nav
                 });
@@ -218,10 +172,30 @@ export class MenuTester {
                     const compare = navDetails[j];
                     
                     // Compare fingerprints to determine if they're similar
-                    const isSimilar = 
+                    const contentSimilar =
                         current.fingerprint.linkCount === compare.fingerprint.linkCount &&
                         current.fingerprint.linkTexts === compare.fingerprint.linkTexts &&
                         current.fingerprint.view.desktop.hasDropdowns === compare.fingerprint.view.desktop.hasDropdowns;
+                    
+                    // Create a more strict comparison for classes
+                    const currentClasses = current.fingerprint.classes.split(' ').filter(c => c.trim() !== '').sort();
+                    const compareClasses = compare.fingerprint.classes.split(' ').filter(c => c.trim() !== '').sort();
+                    const classesEqual =
+                        currentClasses.length === compareClasses.length &&
+                        currentClasses.every((cls, idx) => cls === compareClasses[idx]);
+                    
+                    // Use strict class comparison
+                    const structureSimilar =
+                        current.fingerprint.ariaAttributes.ariaLabelText === compare.fingerprint.ariaAttributes.ariaLabelText &&
+                        classesEqual && // Use the strict comparison
+                        current.fingerprint.id === compare.fingerprint.id;
+                    
+                    // Debug: Print out the results of the comparisons
+                    console.log(`Content similar: ${contentSimilar}`);
+                    console.log(`Structure similar: ${structureSimilar}`);
+                    console.log(`Classes equal: ${current.fingerprint.classes === compare.fingerprint.classes}`);
+                    
+                    const isSimilar = contentSimilar && structureSimilar;
                     
                     if (isSimilar) {
                         similarIndices.push(j);
@@ -252,6 +226,9 @@ export class MenuTester {
         
         console.log(`Found ${navInfo.total} nav elements, grouped into ${navInfo.uniqueGroups.length} unique groups`);
         
+        // Add more detailed logging for debugging
+        console.log("\n=== DEBUG: DETAILED GROUP INFORMATION ===");
+        
         for (let i = 0; i < navInfo.uniqueGroups.length; i++) {
             const group = navInfo.uniqueGroups[i];
             console.log(`\nGroup ${i + 1} (${group.count} similar elements):`);
@@ -260,12 +237,58 @@ export class MenuTester {
             console.log(`  - Links: ${group.fingerprint.linkCount}`);
             console.log(`  - Desktop visibility: ${group.fingerprint.view.desktop.visibility ? 'Visible' : 'Hidden'}`);
             console.log(`  - Desktop menu type: ${group.fingerprint.view.desktop.menuType}`);
+            console.log(`  - Classes: ${group.fingerprint.classes}`);
+            console.log(`  - ARIA Label: ${group.fingerprint.ariaAttributes.ariaLabelText}`);
+            console.log(`  - ID: ${group.fingerprint.id}`);
             
             if (group.count > 1) {
                 console.log(`  - Similar elements:`);
                 for (let j = 1; j < group.selectors.length; j++) {
                     console.log(`    - ${group.selectors[j]}`);
+                    
+                    // Get the original element details for comparison
+                    const originalIndex = navInfo.uniqueIndices[i];
+                    const compareIndex = group.indices[j];
+                    const originalElement = navInfo.fingerprints[originalIndex];
+                    const compareElement = navInfo.fingerprints[compareIndex];
+                
                 }
+            }
+        }
+        
+        // Add a final check to verify the uniqueness criteria
+        console.log("\n=== DEBUG: VERIFYING UNIQUENESS CRITERIA ===");
+        
+        // Check each pair of elements to ensure they're properly grouped
+        for (let i = 0; i < navInfo.fingerprints.length; i++) {
+            for (let j = i + 1; j < navInfo.fingerprints.length; j++) {
+                const el1 = navInfo.fingerprints[i];
+                const el2 = navInfo.fingerprints[j];
+                
+                // Check if they should be considered similar
+                const contentSimilar =
+                    el1.linkCount === el2.linkCount &&
+                    el1.linkTexts === el2.linkTexts &&
+                    el1.view.desktop.hasDropdowns === el2.view.desktop.hasDropdowns;
+                
+                // Check if classes are equal using strict comparison
+                const el1Classes = el1.classes.split(' ').filter(c => c.trim() !== '').sort();
+                const el2Classes = el2.classes.split(' ').filter(c => c.trim() !== '').sort();
+                const classesEqual =
+                    el1Classes.length === el2Classes.length &&
+                    el1Classes.every((cls, idx) => cls === el2Classes[idx]);
+                
+                const structureSimilar =
+                    el1.ariaAttributes.ariaLabelText === el2.ariaAttributes.ariaLabelText &&
+                    classesEqual &&
+                    el1.id === el2.id;
+                
+                const shouldBeSimilar = contentSimilar && structureSimilar;
+                
+                // Check if they're actually in the same group
+                const group1 = navInfo.uniqueGroups.find(g => g.indices.includes(i));
+                const group2 = navInfo.uniqueGroups.find(g => g.indices.includes(j));
+                const areInSameGroup = group1 && group2 && group1 === group2;
             }
         }
         

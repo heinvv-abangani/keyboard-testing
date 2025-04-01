@@ -1,6 +1,6 @@
 import { test, Page, Locator } from "@playwright/test";
 import { isElementTrulyVisible } from './general';
-import { goToUrl, detectAndClosePopup } from "../helpers/general";
+import { goToUrl, detectAndClosePopup } from "./general";
 import { getConfigByUrl } from "../config";
 
 /**
