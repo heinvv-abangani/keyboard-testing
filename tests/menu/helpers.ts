@@ -244,30 +244,40 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         
         // Get initial state
         const initialState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
-        
-        // Hover over the menu item
-        await menuItem.hover();
-        
-        // Wait a moment for any hover effects
+        // Check if the menu item is visible before attempting to hover
+        const isVisible = await isElementTrulyVisible(menuItem);
+        if (!isVisible) {
+            console.log(`⚠️ Menu item is not visible, skipping hover test`);
+        } else {
+            // Hover over the menu item
+            await menuItem.hover();
+            
+            // Wait a moment for any hover effects
+            await page.waitForTimeout(500);
+        }
         await page.waitForTimeout(500);
         
-        // Check if aria-expanded changed after hover
-        const hoverState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
-        
-        if (hoverState !== initialState) {
-            console.log(`✅ Dropdown responds to hover`);
-            return true;
-        }
-        
-        // Click the menu item
-        await menuItem.click();
-        
-        // Check if aria-expanded changed after click
-        const clickState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
-        
-        if (clickState !== initialState) {
-            console.log(`✅ Dropdown responds to click`);
-            return true;
+        // Check if aria-expanded changed after hover (only if element was visible)
+        if (isVisible) {
+            const hoverState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
+            
+            if (hoverState !== initialState) {
+                console.log(`✅ Dropdown responds to hover`);
+                return true;
+            }
+            
+            // Click the menu item (only if element is visible)
+            await menuItem.click();
+            
+            // Check if aria-expanded changed after click
+            const clickState = await menuItem.evaluate(el => el.getAttribute('aria-expanded'));
+            
+            if (clickState !== initialState) {
+                console.log(`✅ Dropdown responds to click`);
+                return true;
+            }
+        } else {
+            console.log(`⚠️ Menu item is not visible, skipping click test`);
         }
         
         console.log(`❌ Dropdown does not respond to hover or click`);
