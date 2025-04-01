@@ -506,8 +506,9 @@ export class MenuTester {
      * Test menu dropdowns for keyboard and mouse accessibility
      */
     private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any): Promise<void> {
-        // Find dropdown menu items
-        const dropdownItems = menu.locator('li:has(ul), [aria-expanded], [aria-haspopup="true"]');
+        const hasListStructure = await menu.locator('li:has(ul)').count() > 0;
+        const selector = hasListStructure ? 'li:has(ul)' : '[aria-expanded], [aria-haspopup="true"]';
+        const dropdownItems = menu.locator(selector);
         const dropdownCount = await dropdownItems.count();
         
         if (dropdownCount > 0) {
@@ -517,10 +518,11 @@ export class MenuTester {
                 const dropdownItem = dropdownItems.nth(j);
                 const text = await dropdownItem.textContent() || '';
                 const title = text.split('\n')[0].trim();
-                const linkCount = await dropdownItem.locator('a').count();
+                const linkCount = await dropdownItem.locator('ul a').count();
+                const rawLinkCount = await dropdownItem.locator('ul a').count();
                 
                 console.log(`\nDropdown ${j + 1}: "${title}"`);
-                console.log(`Link count: "${linkCount}"`);
+                console.log(`Link count: "${linkCount || rawLinkCount}"`);
                 
                 // Test keyboard accessibility
                 const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem, title);
