@@ -32,18 +32,17 @@ export class MenuTester {
     }
     
     /**
-     * Find unique nav elements by comparing their content and structure
+     * Initialize nav elements in the browser context
+     * Returns a function to be used with page.evaluate
      */
-    async findUniqueNavElements(): Promise<NavInfo> {
-        console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS (INCLUDING HIDDEN MENUS) ===");
-        
-        console.log("\n=== DEBUG: Starting findUniqueNavElements ===");
-        
-        const navInfo = await this.page.evaluate(() => {
+    private initializeNavElements() {
+        return () => {
             // Define determineMenuType function in the browser context
             const determineMenuType = (nav: Element, isDesktop: boolean) => {
+                // Check if it has dropdown elements
                 const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
-
+                
+                // Determine the menu type
                 if (hasDropdowns) {
                     return "DropdownMenu";
                 } else {
@@ -222,7 +221,18 @@ export class MenuTester {
                 menuIds: navDetails.map(n => n.fingerprint.menuId),
                 fingerprints: navDetails.map(n => n.fingerprint)
             };
-        });
+        };
+    }
+    
+    /**
+     * Find unique nav elements by comparing their content and structure
+     */
+    async findUniqueNavElements(): Promise<NavInfo> {
+        console.log("\n=== CHECKING FOR UNIQUE NAV ELEMENTS (INCLUDING HIDDEN MENUS) ===");
+        
+        console.log("\n=== DEBUG: Starting findUniqueNavElements ===");
+        
+        const navInfo = await this.page.evaluate(this.initializeNavElements());
         
         console.log(`Found ${navInfo.total} nav elements, grouped into ${navInfo.uniqueGroups.length} unique groups`);
         
