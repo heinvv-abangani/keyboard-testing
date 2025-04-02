@@ -65,11 +65,11 @@ export class MenuTester {
 
             for (const nav of navElements) {
                 const isVisible = (nav: Element) => {
-                    const isHidden = !(nav as HTMLElement).checkVisibility;
+                    const isHidden = !(nav as HTMLElement).checkVisibility();
 
                     if (isHidden) {
                         const classes = Array.from(nav.classList);
-                        console.log(`Nav element with class ${classes.join('.')} is hidden (offsetParent is null)`);
+                        console.log(`Nav element with class ${classes.join('.')} is hidden`);
                         return false;
                     }
 
@@ -90,7 +90,7 @@ export class MenuTester {
                             menuType: determineMenuType(nav, true) as MenuType,
                             visibility: isVisible(nav),
                             totalItems: links.length,
-                            visibleItems: links.filter(link => (link as HTMLElement).offsetParent !== null).length,
+                            visibleItems: links.filter(link => (link as HTMLElement).checkVisibility).length,
                             hasDropdowns: nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0,
                             hasKeyboardDropdowns: false, // Will be determined during testing
                             hasMouseOnlyDropdowns: false, // Will be determined during testing
