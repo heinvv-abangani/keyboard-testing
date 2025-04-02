@@ -450,8 +450,17 @@ export class MenuTester {
         };
         
         for (let i = 0; i < count; i++) {
+            // Get the menu group and fingerprint
             const group = this.uniqueNavElements.uniqueGroups[i];
             const fingerprint = group.fingerprint;
+            
+            // Check menu is visible in desktop (from the fingerprint information)
+            // If not visible, skip iteration
+            if (!fingerprint.view.desktop.visibility) {
+                console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in desktop view`);
+                continue;
+            }
+            
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
             const menu = this.page.locator(menuSelector);
             
@@ -730,7 +739,6 @@ export class MenuTester {
             // If the focused element is a link in the dropdown, increment the counter
             if (focusedElement.isLink) {
                 focusableCount++;
-                console.log(`Focused dropdown item: "${focusedElement.text}" (count: ${focusedElement.visibleCount})`);
             }
         }
         
@@ -755,6 +763,12 @@ export class MenuTester {
             console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS ===`);
             
             for (let j = 0; j < dropdownCount; j++) {
+                // Check menu is visible in desktop (from the fingerprint information)
+                if (!fingerprint.view.desktop.visibility) {
+                    console.log(`Menu is not visible in desktop view, skipping dropdown test`);
+                    continue;
+                }
+                
                 const dropdownItem = dropdownItems.nth(j);
                 const text = await dropdownItem.textContent() || '';
                 const title = text.split('\n')[0].trim();
