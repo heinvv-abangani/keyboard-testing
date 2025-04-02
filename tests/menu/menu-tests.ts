@@ -445,7 +445,8 @@ export class MenuTester {
             totalMenuItems: 0,
             keyboardFocusableItems: 0,
             keyboardAccessibleDropdowns: 0,
-            mouseOnlyDropdowns: 0
+            mouseOnlyDropdowns: 0,
+            visibleMenuItems: 0,
         };
         
         for (let i = 0; i < count; i++) {
@@ -479,18 +480,19 @@ export class MenuTester {
             
             // Find all links in the menu
             const links = menu.locator('a');
-            
-            // Test keyboard focusability
-            // const focusabilityResults = await testKeyboardFocusability(this.page, links);
-            
-            // results.totalMenuItems += focusabilityResults.totalMenuItems;
-            // results.keyboardFocusableItems += focusabilityResults.keyboardFocusableItems;
 
             results.totalMenuItems += await links.count();
-            results.keyboardFocusableItems += 0;
+            results.keyboardFocusableItems = 0;
+            results.visibleMenuItems = 0;
+
+            await this.testVisibleMenuItems(menu, fingerprint, results);
             
             // Test menu dropdowns
             await this.testMenuDropdown(menu, fingerprint, results);
+
+            console.log( 'Number of links: ', linkCount);
+            console.log( 'Number of visible links: ', results.visibleMenuItems);
+            console.log( 'Number of focusable links: ', results.keyboardFocusableItems);
         }
         
         // Generate WCAG evaluation
@@ -501,7 +503,245 @@ export class MenuTester {
         
         return results;
     }
+
+    private async testVisibleMenuItems(menu: Locator, fingerprint: NavFingerprint, results: any): Promise<void> {
+        // Find all links in the menu
+        const links = menu.locator('a');
+        const count = await links.count();
+        
+        // Array to store visible links
+        const visibleLinks: number[] = [];
+        
+        // Add data-menu-visible-count attribute to each visible link
+        for (let i = 0; i < count; i++) {
+            const link = links.nth(i);
+            const isVisible = await link.evaluate(el => {
+                return (el as HTMLElement).checkVisibility();
+            });
+            
+            if (isVisible) {
+                // Add the visible count attribute to the link
+                await link.evaluate((el, index) => {
+                    el.setAttribute('data-menu-visible-count', index.toString());
+                }, visibleLinks.length);
+                
+                visibleLinks.push(i);
+                results.visibleMenuItems++;
+            }
+        }
+        
+        console.log(`\nFound ${visibleLinks.length} visible menu items out of ${count} total items`);
+        
+        if (visibleLinks.length === 0) {
+            console.log('No visible menu items found, skipping keyboard navigation test');
+            return;
+        }
+        
+        // Focus the first visible menu item
+        const firstVisibleLink = links.nth(visibleLinks[0]);
+        await firstVisibleLink.focus();
+        
+        // Get the menu ID for checking if we're still in the menu
+        const menuId = fingerprint.menuId;
+        
+        // Tab through all visible menu items
+        let focusableCount = 0;
+        let isInsideMenu = true;
+        
+        // Keep pressing Tab until we're outside the menu
+        while (isInsideMenu) {
+            // Get the currently focused element
+            const focusedElement = await menu.page().evaluate(() => {
+                const active = document.activeElement;
+                if (!active) return null;
+                
+                // Get the closest menu container
+                const menuContainer = active.closest('[data-menu-id]');
+                const menuId = menuContainer ? menuContainer.getAttribute('data-menu-id') : null;
+                
+                return {
+                    tagName: active.tagName.toLowerCase(),
+                    text: active.textContent?.trim() || '',
+                    href: active.getAttribute('href') || '',
+                    menuId: menuId,
+                    isLink: active.tagName.toLowerCase() === 'a'
+                };
+            });
+            
+            // Check if we're still inside the menu
+            if (!focusedElement) {
+                // No focused element found
+                console.log(`No focused element found`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // Check if the focused element has a menuId property
+            if (focusedElement.menuId === undefined || focusedElement.menuId === null) {
+                // Focused element is not inside any menu (e.g., it's in a tab element)
+                console.log(`Focus moved outside of menus to a ${focusedElement.tagName} element`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // Check if the focused element is in a different menu
+            if (focusedElement.menuId !== menuId) {
+                console.log(`Focus moved to a different menu with ID: ${focusedElement.menuId}`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // If the focused element is a link, increment the counter
+            if (focusedElement.isLink) {
+                focusableCount++;
+                console.log(`Focused menu item: "${focusedElement.text}"`);
+            }
+            
+            // Press Tab to move to the next element
+            await menu.page().keyboard.press('Tab');
+            
+            // Add a small delay to ensure the focus has moved
+            await menu.page().waitForTimeout(100);
+        }
+        
+        console.log(`Found ${focusableCount} keyboard focusable menu items`);
+        
+        // Increment the results counter
+        results.keyboardFocusableItems += focusableCount;
+    }
     
+    /**
+     * Test focusable dropdown items
+     * Continues from the current focused element and tests if all visible dropdown items are focusable
+     */
+    private async testFocusableDropdownItems(page: Page, menu: Locator, menuItem: Locator, results: any): Promise<number> {
+        console.log(`\n=== TESTING FOCUSABLE DROPDOWN ITEMS ===`);
+        console.log(`Continuing from visible count: ${results.visibleMenuItems}`);
+        
+        // Find all dropdown links
+        const dropdownLinks = menuItem.locator('ul a, .dropdown a, .sub-menu a');
+        const count = await dropdownLinks.count();
+        
+        if (count === 0) {
+            console.log('No dropdown links found');
+            return 0;
+        }
+        
+        console.log(`Found ${count} dropdown links`);
+        
+        // Array to store visible dropdown links
+        const visibleLinks: number[] = [];
+        let currentCount = results.visibleMenuItems;
+        
+        // Add data-menu-visible-count attribute to each visible dropdown link
+        for (let i = 0; i < count; i++) {
+            const link = dropdownLinks.nth(i);
+            const isVisible = await link.evaluate(el => {
+                return (el as HTMLElement).checkVisibility();
+            });
+            
+            if (isVisible) {
+                // Add the visible count attribute to the link
+                await link.evaluate((el, index) => {
+                    el.setAttribute('data-menu-visible-count', index.toString());
+                }, currentCount);
+                
+                visibleLinks.push(i);
+                currentCount++;
+            }
+        }
+        
+        console.log(`Found ${visibleLinks.length} visible dropdown items out of ${count} total items`);
+        
+        if (visibleLinks.length === 0) {
+            console.log('No visible dropdown items found, skipping keyboard navigation test');
+            return 0;
+        }
+        
+        // We assume the dropdown is already open and a menu item is focused
+        // Get the menu ID for checking if we're still in the menu
+        const menuId = await menu.evaluate(el => el.getAttribute('data-menu-id'));
+        
+        // Tab through all visible dropdown items
+        let focusableCount = 0;
+        let isInsideMenu = true;
+        
+        // Keep pressing Tab until we're outside the menu or dropdown
+        while (isInsideMenu) {
+            // Press Tab to move to the next element
+            await page.keyboard.press('Tab');
+            
+            // Add a small delay to ensure the focus has moved
+            await page.waitForTimeout(100);
+            
+            // Get the currently focused element
+            const focusedElement = await page.evaluate(() => {
+                const active = document.activeElement;
+                if (!active) return null;
+                
+                // Get the closest menu container
+                const menuContainer = active.closest('[data-menu-id]');
+                const menuId = menuContainer ? menuContainer.getAttribute('data-menu-id') : null;
+                
+                // Check if this is a dropdown item
+                const isInDropdown = active.closest('ul ul, .dropdown, .sub-menu') !== null;
+                
+                return {
+                    tagName: active.tagName.toLowerCase(),
+                    text: active.textContent?.trim() || '',
+                    href: active.getAttribute('href') || '',
+                    menuId: menuId,
+                    isLink: active.tagName.toLowerCase() === 'a',
+                    isInDropdown: isInDropdown,
+                    visibleCount: active.getAttribute('data-menu-visible-count')
+                };
+            });
+            
+            // Check if we're still inside the menu
+            if (!focusedElement) {
+                // No focused element found
+                console.log(`No focused element found`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // Check if the focused element has a menuId property
+            if (focusedElement.menuId === undefined || focusedElement.menuId === null) {
+                // Focused element is not inside any menu (e.g., it's in a tab element)
+                console.log(`Focus moved outside of menus to a ${focusedElement.tagName} element`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // Check if the focused element is in a different menu
+            if (focusedElement.menuId !== menuId) {
+                console.log(`Focus moved to a different menu with ID: ${focusedElement.menuId}`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // Check if we're still in a dropdown
+            if (!focusedElement.isInDropdown) {
+                console.log(`Focus moved out of dropdown to menu item: "${focusedElement.text}"`);
+                isInsideMenu = false;
+                continue;
+            }
+            
+            // If the focused element is a link in the dropdown, increment the counter
+            if (focusedElement.isLink) {
+                focusableCount++;
+                console.log(`Focused dropdown item: "${focusedElement.text}" (count: ${focusedElement.visibleCount})`);
+            }
+        }
+        
+        console.log(`Found ${focusableCount} keyboard focusable dropdown items`);
+
+        results.visibleMenuItems = currentCount;
+        results.keyboardFocusableItems += focusableCount;
+
+        return results;
+    }
+
     /**
      * Test menu dropdowns for keyboard and mouse accessibility
      */
@@ -525,12 +765,15 @@ export class MenuTester {
                 console.log(`Link count: "${linkCount || rawLinkCount}"`);
                 
                 // Test keyboard accessibility
-                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, dropdownItem, title);
+                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, menu, dropdownItem, title);
                 
                 if (isKeyboardAccessible) {
                     results.keyboardAccessibleDropdowns++;
                     // Update fingerprint data
                     fingerprint.view.desktop.hasKeyboardDropdowns = true;
+                    
+                    // Test focusable dropdown items
+                    results = await this.testFocusableDropdownItems(this.page, menu, dropdownItem, results);
                 } else {
                     // Test mouse interactions
                     const isMouseAccessible = await testMouseInteractions(this.page, dropdownItem);
@@ -579,3 +822,4 @@ export async function testMenus(page: Page, websiteUrl: string) {
         hiddenMenus
     };
 }
+

@@ -149,7 +149,7 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
 /**
  * Test dropdown keyboard accessibility
  */
-export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Locator, title: string): Promise<boolean> {
+export async function testDropdownKeyboardAccessibility(page: Page, menu: Locator, menuItem: Locator, title: string): Promise<boolean> {
     console.log(`\n=== TESTING DROPDOWN KEYBOARD ACCESSIBILITY FOR "${title}" ===`);
     
     // Check if the menu item or any of its descendants has aria-expanded attribute
@@ -182,11 +182,15 @@ export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Lo
         await expandedLocator.focus();
         console.log(`Focused on element with aria-expanded attribute`);
         
-        // Press Enter key to expand the dropdown
-        await page.keyboard.press('Enter');
+        // Press Enter key to expand the dropdown if necessary
+        let isExpanded = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'true');
+
+        if (!isExpanded) {
+            await page.keyboard.press('Enter');
+        }
         
         // Check if aria-expanded is now true
-        const isExpanded = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'true');
+        isExpanded = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'true');
         
         if (isExpanded) {
             console.log(`✅ Dropdown expanded with Enter key`);
@@ -199,6 +203,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menuItem: Lo
             
             if (isCollapsed) {
                 console.log(`✅ Dropdown collapsed with Escape key`);
+                await page.keyboard.press('Enter');
                 return true;
             } else {
                 console.log(`❌ Dropdown did not collapse with Escape key`);
@@ -395,21 +400,14 @@ export async function testAriaControlsDropdowns(page: Page, menuItem: Locator): 
      * This is a simplified version of isElementTrulyVisible that can be used in page.evaluate()
      */
     function checkVisibility(element: Element): boolean {
-        // Check if element is hidden using offsetParent (most reliable method)
-        const isHidden = (element as HTMLElement).offsetParent === null;
+        // Use the native checkVisibility() method
+        const isHidden = !(element as HTMLElement).checkVisibility();
         
         if (isHidden) {
             return false;
         }
         
-        // Check computed style for any element
-        const style = window.getComputedStyle(element);
-        const isHiddenByCSS =
-            style.display === 'none' ||
-            style.visibility === 'hidden' ||
-            parseFloat(style.opacity) === 0;
-        
-        return !isHiddenByCSS;
+        return true;
     }
     
     // Try with Space key
