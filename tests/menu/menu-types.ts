@@ -12,9 +12,7 @@ export enum MenuType {
 export interface MenuView {
     menuType: MenuType;
     visibility: boolean;
-    totalItems: number;
     visibleItems: number;
-    hasDropdowns: boolean;
     hasKeyboardDropdowns: boolean;
     hasMouseOnlyDropdowns: boolean;
     display: string;
@@ -41,6 +39,7 @@ export interface NavFingerprint {
     // Content information
     linkCount: number;
     linkTexts: string;
+    hasDropdowns: boolean;
     
     // Structure information
     childrenCount: number;

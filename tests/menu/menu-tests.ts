@@ -89,9 +89,7 @@ export class MenuTester {
                         desktop: {
                             menuType: determineMenuType(nav, true) as MenuType,
                             visibility: isVisible(nav),
-                            totalItems: links.length,
                             visibleItems: links.filter(link => (link as HTMLElement).checkVisibility).length,
-                            hasDropdowns: nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0,
                             hasKeyboardDropdowns: false, // Will be determined during testing
                             hasMouseOnlyDropdowns: false, // Will be determined during testing
                             display: window.getComputedStyle(nav).display,
@@ -100,9 +98,7 @@ export class MenuTester {
                         mobile: {
                             menuType: determineMenuType(nav, false) as MenuType,
                             visibility: false, // Will be determined during mobile testing
-                            totalItems: links.length,
                             visibleItems: 0, // Will be determined during mobile testing
-                            hasDropdowns: nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0,
                             hasKeyboardDropdowns: false, // Will be determined during testing
                             hasMouseOnlyDropdowns: false, // Will be determined during testing
                             display: '',
@@ -114,6 +110,7 @@ export class MenuTester {
                     classes: Array.from(nav.classList).join(' '),
                     linkCount: links.length,
                     linkTexts: linkTexts,
+                    hasDropdowns: nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0,
                     childrenCount: nav.children.length,
                     childrenTypes: Array.from(nav.children).map(child => child.tagName.toLowerCase()).join(', '),
                     parentId: nav.parentElement?.id || '',
@@ -145,6 +142,48 @@ export class MenuTester {
                     },
                     notes: []
                 };
+
+               // Update mobile data here at this position.
+               // Save current viewport size
+               const originalViewportWidth = window.innerWidth;
+               const originalViewportHeight = window.innerHeight;
+               
+               // Change to mobile viewport (e.g., 375x667 for iPhone)
+               window.innerWidth = 375;
+               window.innerHeight = 667;
+               
+               // Trigger a resize event to ensure the page responds to the viewport change
+               window.dispatchEvent(new Event('resize'));
+               
+               // Check visibility in mobile viewport
+               const isMobileVisible = (nav: Element) => {
+                   const isHidden = !(nav as HTMLElement).checkVisibility();
+                   return !isHidden;
+               };
+               
+               // Count visible links in mobile viewport
+               const mobileVisibleLinks = links.filter(link => (link as HTMLElement).checkVisibility()).length;
+               
+               // Get computed style in mobile viewport
+               const mobileComputedStyle = window.getComputedStyle(nav);
+               
+               // Update mobile fingerprint data
+               fingerprint.view.mobile = {
+                   menuType: determineMenuType(nav, false) as MenuType,
+                   visibility: isMobileVisible(nav),
+                   visibleItems: mobileVisibleLinks,
+                   hasKeyboardDropdowns: false, // Will be determined during testing
+                   hasMouseOnlyDropdowns: false, // Will be determined during testing
+                   display: mobileComputedStyle.display,
+                   position: mobileComputedStyle.position
+               };
+               
+               // Return to original viewport size
+               window.innerWidth = originalViewportWidth;
+               window.innerHeight = originalViewportHeight;
+               
+               // Trigger another resize event to restore the original viewport
+               window.dispatchEvent(new Event('resize'));
                 
                 const navSelector = `[data-menu-id="${fingerprint.menuId}"]`;
                 
@@ -174,7 +213,7 @@ export class MenuTester {
                     const contentSimilar =
                         current.fingerprint.linkCount === compare.fingerprint.linkCount &&
                         current.fingerprint.linkTexts === compare.fingerprint.linkTexts &&
-                        current.fingerprint.view.desktop.hasDropdowns === compare.fingerprint.view.desktop.hasDropdowns;
+                        current.fingerprint.hasDropdowns === compare.fingerprint.hasDropdowns;
                     
                     // Create a more strict comparison for classes
                     const currentClasses = current.fingerprint.classes.split(' ').filter(c => c.trim() !== '').sort();
@@ -268,7 +307,7 @@ export class MenuTester {
                 const contentSimilar =
                     el1.linkCount === el2.linkCount &&
                     el1.linkTexts === el2.linkTexts &&
-                    el1.view.desktop.hasDropdowns === el2.view.desktop.hasDropdowns;
+                    el1.hasDropdowns === el2.hasDropdowns;
                 
                 // Check if classes are equal using strict comparison
                 const el1Classes = el1.classes.split(' ').filter(c => c.trim() !== '').sort();
