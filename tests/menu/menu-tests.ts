@@ -478,7 +478,11 @@ export class MenuTester {
         const count = this.uniqueNavElements.uniqueGroups.length;
         console.log(`\n=== FOUND ${count} UNIQUE MENU ELEMENTS ===`);
         
-        const results = {
+        // Store original viewport size to restore later
+        const originalViewportSize = await this.page.viewportSize();
+        
+        // Create separate result objects for desktop and mobile
+        const desktopResults = {
             totalMenus: count,
             menusWithAriaAttributes: 0,
             totalMenuItems: 0,
@@ -488,17 +492,38 @@ export class MenuTester {
             visibleMenuItems: 0,
         };
         
+        const mobileResults = {
+            totalMenus: count,
+            menusWithAriaAttributes: 0,
+            totalMenuItems: 0,
+            keyboardFocusableItems: 0,
+            keyboardAccessibleDropdowns: 0,
+            mouseOnlyDropdowns: 0,
+            visibleMenuItems: 0,
+        };
+        
+        // Combined results for final reporting
+        const combinedResults = {
+            totalMenus: count,
+            menusWithAriaAttributes: 0,
+            totalMenuItems: 0,
+            keyboardFocusableItems: 0,
+            keyboardAccessibleDropdowns: 0,
+            mouseOnlyDropdowns: 0,
+            visibleMenuItems: 0,
+            mobileKeyboardFocusableItems: 0,
+            mobileVisibleMenuItems: 0,
+        };
+        
+        // First test desktop viewport
+        console.log("\n=== TESTING DESKTOP VIEWPORT ===");
+        // Set desktop viewport size (standard desktop size)
+        await this.page.setViewportSize({ width: 1280, height: 720 });
+        
         for (let i = 0; i < count; i++) {
             // Get the menu group and fingerprint
             const group = this.uniqueNavElements.uniqueGroups[i];
             const fingerprint = group.fingerprint;
-            
-            // Check menu is visible in desktop (from the fingerprint information)
-            // If not visible, skip iteration
-            if (!fingerprint.view.desktop.visibility) {
-                console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in desktop view`);
-                continue;
-            }
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
             const menu = this.page.locator(menuSelector);
@@ -520,7 +545,62 @@ export class MenuTester {
             console.log(`  - hasAriaAttributes ${hasAriaAttributes ? '✅ Yes' : '❌ No'}`);
             
             if (hasAriaAttributes) {
-                results.menusWithAriaAttributes++;
+                desktopResults.menusWithAriaAttributes++;
+                combinedResults.menusWithAriaAttributes++;
+            }
+
+            // Use link count from fingerprint
+            const linkCount = fingerprint.linkCount;
+
+            // Find all links in the menu
+            const links = menu.locator('a');
+
+            // Check menu is visible in desktop (from the fingerprint information)
+            // If not visible, skip iteration
+            if (!fingerprint.view.desktop.visibility) {
+                console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in desktop view`);
+            } else {
+                desktopResults.totalMenuItems += await links.count();
+                combinedResults.totalMenuItems += await links.count();
+                
+                // Reset counters for this menu
+                desktopResults.keyboardFocusableItems = 0;
+                desktopResults.visibleMenuItems = 0;
+    
+                await this.testVisibleMenuItems(menu, fingerprint, desktopResults, 'desktop');
+                
+                // Test menu dropdowns
+                await this.testMenuDropdown(menu, fingerprint, desktopResults, 'desktop');
+    
+                console.log('Desktop: Number of links: ', linkCount);
+                console.log('Desktop: Number of visible links: ', desktopResults.visibleMenuItems);
+                console.log('Desktop: Number of focusable links: ', desktopResults.keyboardFocusableItems);
+                
+                // Update combined results
+                combinedResults.keyboardFocusableItems += desktopResults.keyboardFocusableItems;
+                combinedResults.visibleMenuItems += desktopResults.visibleMenuItems;
+                combinedResults.keyboardAccessibleDropdowns += desktopResults.keyboardAccessibleDropdowns;
+                combinedResults.mouseOnlyDropdowns += desktopResults.mouseOnlyDropdowns;
+            }
+        }
+        
+        // Now test mobile viewport
+        console.log("\n=== TESTING MOBILE VIEWPORT ===");
+        // Set mobile viewport size (iPhone size)
+        await this.page.setViewportSize({ width: 375, height: 667 });
+        
+        for (let i = 0; i < count; i++) {
+            // Get the menu group and fingerprint
+            const group = this.uniqueNavElements.uniqueGroups[i];
+            const fingerprint = group.fingerprint;
+            
+            const menuSelector = `[data-menu-id="${group.menuId}"]`;
+            const menu = this.page.locator(menuSelector);
+            
+            // If not visible on mobile, skip this menu
+            if (!fingerprint.view.mobile.visibility) {
+                console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in mobile view`);
+                continue;
             }
             
             // Use link count from fingerprint
@@ -528,34 +608,47 @@ export class MenuTester {
             
             // Find all links in the menu
             const links = menu.locator('a');
-
-            results.totalMenuItems += await links.count();
-            results.keyboardFocusableItems = 0;
-            results.visibleMenuItems = 0;
-
-            await this.testVisibleMenuItems(menu, fingerprint, results);
+            
+            mobileResults.totalMenuItems += await links.count();
+            
+            // Reset counters for this menu
+            mobileResults.keyboardFocusableItems = 0;
+            mobileResults.visibleMenuItems = 0;
+            
+            await this.testVisibleMenuItems(menu, fingerprint, mobileResults, 'mobile');
             
             // Test menu dropdowns
-            await this.testMenuDropdown(menu, fingerprint, results);
-
-            console.log( 'Number of links: ', linkCount);
-            console.log( 'Number of visible links: ', results.visibleMenuItems);
-            console.log( 'Number of focusable links: ', results.keyboardFocusableItems);
+            await this.testMenuDropdown(menu, fingerprint, mobileResults, 'mobile');
+            
+            console.log('Mobile: Number of links: ', linkCount);
+            console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
+            console.log('Mobile: Number of focusable links: ', mobileResults.keyboardFocusableItems);
+            
+            // Update combined results
+            combinedResults.mobileKeyboardFocusableItems += mobileResults.keyboardFocusableItems;
+            combinedResults.mobileVisibleMenuItems += mobileResults.visibleMenuItems;
+        }
+        
+        // Return to original viewport size
+        if (originalViewportSize) {
+            await this.page.setViewportSize(originalViewportSize);
         }
         
         // Generate WCAG evaluation
         console.log(`\n=== WCAG EVALUATION ===`);
-        console.log(`2.1.1 Keyboard (Level A): ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
-        console.log(`2.4.5 Multiple Ways (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
-        console.log(`3.2.3 Consistent Navigation (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`2.1.1 Keyboard (Level A): ${combinedResults.keyboardFocusableItems === combinedResults.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`2.4.5 Multiple Ways (Level AA): ${combinedResults.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`3.2.3 Consistent Navigation (Level AA): ${combinedResults.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         
-        return results;
+        return combinedResults;
     }
 
-    private async testVisibleMenuItems(menu: Locator, fingerprint: NavFingerprint, results: any): Promise<void> {
+    private async testVisibleMenuItems(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile'): Promise<void> {
         // Find all links in the menu
         const links = menu.locator('a');
         const count = await links.count();
+        
+        console.log(`\n=== TESTING VISIBLE MENU ITEMS (${viewport}) ===`);
         
         // Array to store visible links
         const visibleLinks: number[] = [];
@@ -578,10 +671,10 @@ export class MenuTester {
             }
         }
         
-        console.log(`\nFound ${visibleLinks.length} visible menu items out of ${count} total items`);
+        console.log(`\nFound ${visibleLinks.length} visible menu items out of ${count} total items (${viewport})`);
         
         if (visibleLinks.length === 0) {
-            console.log('No visible menu items found, skipping keyboard navigation test');
+            console.log(`No visible menu items found in ${viewport} view, skipping keyboard navigation test`);
             return;
         }
         
@@ -642,7 +735,7 @@ export class MenuTester {
             // If the focused element is a link, increment the counter
             if (focusedElement.isLink) {
                 focusableCount++;
-                console.log(`Focused menu item: "${focusedElement.text}"`);
+                console.log(`Focused menu item: "${focusedElement.text}" (${viewport})`);
             }
             
             // Press Tab to move to the next element
@@ -652,18 +745,23 @@ export class MenuTester {
             await menu.page().waitForTimeout(100);
         }
         
-        console.log(`Found ${focusableCount} keyboard focusable menu items`);
+        console.log(`Found ${focusableCount} keyboard focusable menu items (${viewport})`);
         
-        // Increment the results counter
-        results.keyboardFocusableItems += focusableCount;
+        // Update the appropriate results counter based on viewport
+        if (viewport === 'desktop') {
+            results.keyboardFocusableItems += focusableCount;
+        } else {
+            // For mobile, update the mobile-specific counter
+            results.mobileKeyboardFocusableItems = focusableCount;
+        }
     }
     
     /**
      * Test focusable dropdown items
      * Continues from the current focused element and tests if all visible dropdown items are focusable
      */
-    private async testFocusableDropdownItems(page: Page, menu: Locator, menuItem: Locator, results: any): Promise<number> {
-        console.log(`\n=== TESTING FOCUSABLE DROPDOWN ITEMS ===`);
+    private async testFocusableDropdownItems(page: Page, menu: Locator, menuItem: Locator, results: any, viewport: 'desktop' | 'mobile' = 'desktop'): Promise<number> {
+        console.log(`\n=== TESTING FOCUSABLE DROPDOWN ITEMS (${viewport}) ===`);
         console.log(`Continuing from visible count: ${results.visibleMenuItems}`);
         
         // Find all dropdown links
@@ -699,16 +797,16 @@ export class MenuTester {
             }
         }
         
-        console.log(`Found ${visibleLinks.length} visible dropdown items out of ${count} total items`);
+        console.log(`Found ${visibleLinks.length} visible dropdown items out of ${count} total items (${viewport})`);
         
         if (visibleLinks.length === 0) {
-            console.log('No visible dropdown items found, skipping keyboard navigation test');
+            console.log(`No visible dropdown items found in ${viewport} view, skipping keyboard navigation test`);
             return 0;
         }
         
         // We assume the dropdown is already open and a menu item is focused
         // Get the menu ID for checking if we're still in the menu
-        const menuId = await menu.evaluate(el => el.getAttribute('data-menu-id'));
+        const menuId = await menu.first().evaluate(el => el.getAttribute('data-menu-id'));
         
         // Tab through all visible dropdown items
         let focusableCount = 0;
@@ -770,7 +868,7 @@ export class MenuTester {
             
             // Check if we're still in a dropdown
             if (!focusedElement.isInDropdown) {
-                console.log(`Focus moved out of dropdown to menu item: "${focusedElement.text}"`);
+                console.log(`Focus moved out of dropdown to menu item: "${focusedElement.text}" (${viewport})`);
                 isInsideMenu = false;
                 continue;
             }
@@ -781,10 +879,17 @@ export class MenuTester {
             }
         }
         
-        console.log(`Found ${focusableCount} keyboard focusable dropdown items`);
+        console.log(`Found ${focusableCount} keyboard focusable dropdown items (${viewport})`);
 
+        // Update the appropriate results counter based on viewport
         results.visibleMenuItems = currentCount;
-        results.keyboardFocusableItems += focusableCount;
+        
+        if (viewport === 'desktop') {
+            results.keyboardFocusableItems += focusableCount;
+        } else {
+            // For mobile, update the mobile-specific counter
+            results.mobileKeyboardFocusableItems += focusableCount;
+        }
 
         return results;
     }
@@ -792,19 +897,23 @@ export class MenuTester {
     /**
      * Test menu dropdowns for keyboard and mouse accessibility
      */
-    private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any): Promise<void> {
+    private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile'): Promise<void> {
         const hasListStructure = await menu.locator('li:has(ul)').count() > 0;
         const selector = hasListStructure ? 'li:has(ul)' : '[aria-expanded], [aria-haspopup="true"]';
         const dropdownItems = menu.locator(selector);
         const dropdownCount = await dropdownItems.count();
         
         if (dropdownCount > 0) {
-            console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS ===`);
+            console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS (${viewport}) ===`);
             
             for (let j = 0; j < dropdownCount; j++) {
-                // Check menu is visible in desktop (from the fingerprint information)
-                if (!fingerprint.view.desktop.visibility) {
-                    console.log(`Menu is not visible in desktop view, skipping dropdown test`);
+                // Check menu visibility based on viewport
+                const isVisible = viewport === 'desktop'
+                    ? fingerprint.view.desktop.visibility
+                    : fingerprint.view.mobile.visibility;
+                
+                if (!isVisible) {
+                    console.log(`Menu is not visible in ${viewport} view, skipping dropdown test`);
                     continue;
                 }
                 
@@ -814,7 +923,7 @@ export class MenuTester {
                 const linkCount = await dropdownItem.locator('ul a').count();
                 const rawLinkCount = await dropdownItem.locator('ul a').count();
                 
-                console.log(`\nDropdown ${j + 1}: "${title}"`);
+                console.log(`\nDropdown ${j + 1}: "${title}" (${viewport})`);
                 console.log(`Link count: "${linkCount || rawLinkCount}"`);
                 
                 // Test keyboard accessibility
@@ -822,22 +931,30 @@ export class MenuTester {
                 
                 if (isKeyboardAccessible) {
                     results.keyboardAccessibleDropdowns++;
-                    // Update fingerprint data
-                    fingerprint.view.desktop.hasKeyboardDropdowns = true;
+                    // Update fingerprint data based on viewport
+                    if (viewport === 'desktop') {
+                        fingerprint.view.desktop.hasKeyboardDropdowns = true;
+                    } else {
+                        fingerprint.view.mobile.hasKeyboardDropdowns = true;
+                    }
                     
                     // Test focusable dropdown items
-                    results = await this.testFocusableDropdownItems(this.page, menu, dropdownItem, results);
+                    results = await this.testFocusableDropdownItems(this.page, menu, dropdownItem, results, viewport);
                 } else {
                     // Test mouse interactions
                     const isMouseAccessible = await testMouseInteractions(this.page, dropdownItem);
                     
                     if (isMouseAccessible) {
                         results.mouseOnlyDropdowns++;
-                        // Update fingerprint data
-                        fingerprint.view.desktop.hasMouseOnlyDropdowns = true;
-                        console.log(`⚠️ Dropdown is only accessible with mouse interactions`);
+                        // Update fingerprint data based on viewport
+                        if (viewport === 'desktop') {
+                            fingerprint.view.desktop.hasMouseOnlyDropdowns = true;
+                        } else {
+                            fingerprint.view.mobile.hasMouseOnlyDropdowns = true;
+                        }
+                        console.log(`⚠️ Dropdown is only accessible with mouse interactions (${viewport})`);
                     } else {
-                        console.log(`❌ Dropdown is not accessible with keyboard or mouse`);
+                        console.log(`❌ Dropdown is not accessible with keyboard or mouse (${viewport})`);
                     }
                 }
             }
