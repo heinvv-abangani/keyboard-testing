@@ -197,6 +197,7 @@ export class ToggleTester {
                 };
                 
                 // Create a simple selector for identification
+                // Use .first() to ensure we always get the first matching element
                 const selector = `[data-toggle-id="${fingerprint.toggleId}"]`;
                 
                 toggleDetails.push({

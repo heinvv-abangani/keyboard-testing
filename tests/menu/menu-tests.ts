@@ -526,7 +526,7 @@ export class MenuTester {
             const fingerprint = group.fingerprint;
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
-            const menu = this.page.locator(menuSelector);
+            const menu = this.page.locator(menuSelector).first();
             
             // Get menu attributes from the fingerprint
             const menuId = fingerprint.id || '';
@@ -595,7 +595,7 @@ export class MenuTester {
             const fingerprint = group.fingerprint;
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
-            const menu = this.page.locator(menuSelector);
+            const menu = this.page.locator(menuSelector).first();
             
             // If not visible on mobile, skip this menu
             if (!fingerprint.view.mobile.visibility) {
@@ -652,6 +652,8 @@ export class MenuTester {
         
         // Array to store visible links
         const visibleLinks: number[] = [];
+
+        await this.page.pause();
         
         // Add data-menu-visible-count attribute to each visible link
         for (let i = 0; i < count; i++) {
