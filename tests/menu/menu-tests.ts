@@ -279,6 +279,8 @@ export class MenuTester {
             console.log(`  - Links: ${group.fingerprint.linkCount}`);
             console.log(`  - Desktop visibility: ${group.fingerprint.view.desktop.visibility ? 'Visible' : 'Hidden'}`);
             console.log(`  - Desktop menu type: ${group.fingerprint.view.desktop.menuType}`);
+            console.log(`  - Mobile visibility: ${group.fingerprint.view.mobile.visibility ? 'Visible' : 'Hidden'}`);
+            console.log(`  - Mobile menu type: ${group.fingerprint.view.mobile.menuType}`);
             console.log(`  - Classes: ${group.fingerprint.classes}`);
             console.log(`  - ARIA Label: ${group.fingerprint.ariaAttributes.ariaLabelText}`);
             console.log(`  - ID: ${group.fingerprint.id}`);
