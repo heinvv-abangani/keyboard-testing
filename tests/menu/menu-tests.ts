@@ -2,7 +2,7 @@ import { test, Page, Locator } from "@playwright/test";
 import { isElementTrulyVisible } from '../helpers/general';
 import { goToUrl, detectAndClosePopup } from "../helpers/general";
 import { getConfigByUrl } from "../config";
-import { NavInfo, NavFingerprint, MenuType } from "./menu-types";
+import { NavInfo, NavFingerprint, MenuType, MenuView } from "./menu-types";
 import { ToggleInfo } from "./toggle-types";
 import { ToggleTester, testToggles } from "./toggle";
 import {
@@ -143,17 +143,7 @@ export class MenuTester {
                     notes: []
                 };
 
-               // Update mobile data here at this position.
-               // Save current viewport size
-               const originalViewportWidth = window.innerWidth;
-               const originalViewportHeight = window.innerHeight;
-               
-               // Change to mobile viewport (e.g., 375x667 for iPhone)
-               window.innerWidth = 375;
-               window.innerHeight = 667;
-               
-               // Trigger a resize event to ensure the page responds to the viewport change
-               window.dispatchEvent(new Event('resize'));
+               // Mobile data will be updated in a separate method with proper viewport sizing
                
                // Check visibility in mobile viewport
                const isMobileVisible = (nav: Element) => {
@@ -325,13 +315,8 @@ export class MenuTester {
                    display: mobileComputedStyle.display,
                    position: mobileComputedStyle.position
                };
-               
-               // Return to original viewport size
-               window.innerWidth = originalViewportWidth;
-               window.innerHeight = originalViewportHeight;
-               
-               // Trigger another resize event to restore the original viewport
-               window.dispatchEvent(new Event('resize'));
+               // Viewport will be handled in a separate method
+                
                 
                 const navSelector = `[data-menu-id="${fingerprint.menuId}"]`;
                 
@@ -414,11 +399,21 @@ export class MenuTester {
     /**
      * Find unique nav elements by comparing their content and structure
      */
-    async findUniqueNavElements(): Promise<NavInfo> {
-        const navInfo = await this.page.evaluate(this.initializeNavElements()) as NavInfo;
+    /**
+     * Find desktop nav elements
+     */
+    private async findDesktopNavElements(): Promise<NavInfo> {
+        console.log("\n=== FINDING NAV ELEMENTS IN DESKTOP VIEWPORT ===");
         
+        // Get the current viewport size (should be desktop by default)
+        const viewportSize = await this.page.viewportSize() || { width: 1920, height: 1080 };
+        console.log(`Current viewport size: ${viewportSize.width}x${viewportSize.height}`);
+        
+        // Get desktop information
+        const navInfo = await this.page.evaluate(this.initializeNavElements()) as NavInfo;
         console.log(`Found ${navInfo.total} nav elements, grouped into ${navInfo.uniqueGroups.length} unique groups`);
-
+        
+        // Log information about each group
         for (let i = 0; i < navInfo.uniqueGroups.length; i++) {
             const group = navInfo.uniqueGroups[i];
             console.log(`\nGroup ${i + 1} (${group.count} similar elements):`);
@@ -427,8 +422,6 @@ export class MenuTester {
             console.log(`  - Links: ${group.fingerprint.linkCount}`);
             console.log(`  - Desktop visibility: ${group.fingerprint.view.desktop.visibility ? 'Visible' : 'Hidden'}`);
             console.log(`  - Desktop menu type: ${group.fingerprint.view.desktop.menuType}`);
-            console.log(`  - Mobile visibility: ${group.fingerprint.view.mobile.visibility ? 'Visible' : 'Hidden'}`);
-            console.log(`  - Mobile menu type: ${group.fingerprint.view.mobile.menuType}`);
             console.log(`  - Classes: ${group.fingerprint.classes}`);
             console.log(`  - ARIA Label: ${group.fingerprint.ariaAttributes.ariaLabelText}`);
             console.log(`  - ID: ${group.fingerprint.id}`);
@@ -437,49 +430,254 @@ export class MenuTester {
                 console.log(`  - Similar elements:`);
                 for (let j = 1; j < group.selectors.length; j++) {
                     console.log(`    - ${group.selectors[j]}`);
-                    
-                    const originalIndex = navInfo.uniqueIndices[i];
-                    const compareIndex = group.indices[j];
-                    const originalElement = navInfo.fingerprints[originalIndex];
-                    const compareElement = navInfo.fingerprints[compareIndex];
-                
                 }
             }
         }
-
-        // Check each pair of elements to ensure they're properly grouped
-        for (let i = 0; i < navInfo.fingerprints.length; i++) {
-            for (let j = i + 1; j < navInfo.fingerprints.length; j++) {
-                const el1 = navInfo.fingerprints[i];
-                const el2 = navInfo.fingerprints[j];
+        
+        return navInfo;
+    }
+    
+    /**
+     * Find mobile-specific information for nav elements
+     */
+    private async findMobileNavElements(navInfo: NavInfo): Promise<NavInfo> {
+        console.log("\n=== FINDING NAV ELEMENTS IN MOBILE VIEWPORT ===");
+        
+        // Save the original viewport size
+        const originalViewportSize = await this.page.viewportSize() || { width: 1920, height: 1080 };
+        
+        // Set mobile viewport size using Playwright's API
+        console.log("Setting mobile viewport size to 375x667");
+        await this.page.setViewportSize({ width: 375, height: 667 });
+        
+        // Update mobile information for each nav element
+        for (const group of navInfo.uniqueGroups) {
+            const menuId = group.menuId;
+            const selector = `[data-menu-id="${menuId}"]`;
+            
+            try {
+                const mobileData = await this.page.evaluate((selector) => {
+                    const nav = document.querySelector(selector);
+                    if (!nav) return null;
+                    
+                    // Determine menu type function
+                    const determineMenuType = (nav: Element, isDesktop: boolean): string => {
+                        // Check if it has dropdown elements
+                        const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
+                        
+                        // Determine the menu type
+                        if (hasDropdowns) {
+                            return "DropdownMenu";
+                        } else {
+                            return "SimpleMenu";
+                        }
+                    };
+                    
+                    // Check visibility in mobile viewport
+                    const isMobileVisible = (nav: Element) => {
+                        // Get element details for debugging
+                        const tagName = nav.tagName.toLowerCase();
+                        const id = nav.id ? `#${nav.id}` : '';
+                        const classes = Array.from(nav.classList).join(' ');
+                        const selector = tagName + id + (classes ? ` (${classes})` : '');
+                        
+                        console.log(`Checking mobile visibility for: ${selector}`);
+                        
+                        // First check basic visibility with checkVisibility()
+                        const isHidden = !(nav as HTMLElement).checkVisibility();
+                        if (isHidden) {
+                            console.log(`Element is hidden by checkVisibility()`);
+                            return false;
+                        }
+                        
+                        // Get computed style
+                        const style = window.getComputedStyle(nav as HTMLElement);
+                        console.log('style display:', style.display);
+                        console.log('style visibility:', style.visibility);
+                        console.log('style opacity:', style.opacity);
+                        
+                        // Check CSS properties that could hide an element
+                        if (style.display === 'none') {
+                            console.log(`Element is hidden by display: none`);
+                            return false;
+                        }
+                        
+                        if (style.visibility === 'hidden') {
+                            console.log(`Element is hidden by visibility: hidden`);
+                            return false;
+                        }
+                        
+                        if (parseFloat(style.opacity) === 0) {
+                            console.log(`Element is hidden by opacity: 0`);
+                            return false;
+                        }
+                        
+                        // Check if element has zero dimensions
+                        const rect = (nav as HTMLElement).getBoundingClientRect();
+                        console.log(`Element dimensions - width: ${rect.width}, height: ${rect.height}`);
+                        
+                        if (rect.width === 0 || rect.height === 0) {
+                            console.log(`Element has zero dimensions`);
+                            return false;
+                        }
+                        
+                        // Check if element is positioned off-screen
+                        const viewportWidth = window.innerWidth;
+                        const viewportHeight = window.innerHeight;
+                        console.log(`Viewport size - width: ${viewportWidth}, height: ${viewportHeight}`);
+                        
+                        if (rect.right <= 0 || rect.bottom <= 0 ||
+                            rect.left >= viewportWidth || rect.top >= viewportHeight) {
+                            console.log(`Element is positioned off-screen`);
+                            return false;
+                        }
+                        
+                        // Check for transforms that might hide the element
+                        if (style.transform) {
+                            console.log(`Element has transform: ${style.transform}`);
+                            // Check for zero scale transforms
+                            if (style.transform.includes('scale(0') ||
+                                style.transform.includes('scale3d(0')) {
+                                console.log(`Element is hidden by zero scale transform`);
+                                return false;
+                            }
+                        }
+                        
+                        // Check for clip/clip-path that might hide the element
+                        if ((style.clip && style.clip !== 'auto') ||
+                            (style.clipPath && style.clipPath !== 'none')) {
+                            console.log(`Element is hidden by clip/clip-path`);
+                            return false;
+                        }
+                        
+                        // Check for max-height: 0 or height: 0 with overflow: hidden
+                        if (style.overflow === 'hidden') {
+                            console.log(`Element has overflow: hidden`);
+                            if (style.maxHeight === '0px' || parseFloat(style.maxHeight) === 0) {
+                                console.log(`Element is hidden by max-height: 0 and overflow: hidden`);
+                                return false;
+                            }
+                            if (style.height === '0px' || parseFloat(style.height) === 0) {
+                                console.log(`Element is hidden by height: 0 and overflow: hidden`);
+                                return false;
+                            }
+                        }
+                        
+                        // Check if element has aria-hidden="true"
+                        if (nav.getAttribute('aria-hidden') === 'true') {
+                            console.log(`Element has aria-hidden="true"`);
+                            return false;
+                        }
+                        
+                        // Check if the element's computed style changes between desktop and mobile viewports
+                        // This is a more reliable way to detect if media queries are affecting the element
+                        console.log(`Current viewport width: ${viewportWidth}`);
+                        
+                        // Create a test div to check if we're in a mobile viewport
+                        const isMobileViewport = viewportWidth <= 1024; // Common breakpoint for tablet/mobile
+                        console.log(`Is mobile viewport: ${isMobileViewport}`);
+                        
+                        // If we're in a mobile viewport, check if the element is actually visible
+                        // by comparing its computed style properties
+                        if (isMobileViewport) {
+                            // Additional checks for mobile visibility
+                            // Check if the element is actually rendered in the layout
+                            if (style.position === 'absolute' &&
+                                (style.left === '-9999px' || style.left === '-999em' ||
+                                 parseInt(style.left) < -1000)) {
+                                console.log(`Element is positioned far off-screen in mobile viewport`);
+                                return false;
+                            }
+                            
+                            // Check if the element has a z-index that might hide it behind other elements
+                            if (style.zIndex && parseInt(style.zIndex) < 0) {
+                                console.log(`Element has negative z-index: ${style.zIndex}`);
+                                return false;
+                            }
+                        }
+                        
+                        // Check if at least one child element is visible
+                        const children = Array.from(nav.children);
+                        console.log(`Element has ${children.length} children`);
+                        
+                        if (children.length > 0) {
+                            const hasVisibleChildren = children.some(child => {
+                                const childStyle = window.getComputedStyle(child as HTMLElement);
+                                const isChildVisible = childStyle.display !== 'none' &&
+                                                    childStyle.visibility !== 'hidden' &&
+                                                    parseFloat(childStyle.opacity) > 0;
+                                return isChildVisible;
+                            });
+                            
+                            if (!hasVisibleChildren) {
+                                console.log(`Element has no visible children`);
+                                return false;
+                            }
+                        }
+                        
+                        // If we've passed all checks, the element is visible
+                        console.log(`Element is considered visible on mobile`);
+                        return true;
+                    };
+                    
+                    // Count visible links in mobile viewport
+                    const links = Array.from(nav.querySelectorAll('a'));
+                    const mobileVisibleLinks = links.filter(link => (link as HTMLElement).checkVisibility()).length;
+                    
+                    // Get computed style in mobile viewport
+                    const mobileComputedStyle = window.getComputedStyle(nav);
+                    
+                    // Return mobile data
+                    return {
+                        menuType: determineMenuType(nav, false) as MenuType,
+                        visibility: isMobileVisible(nav),
+                        visibleItems: mobileVisibleLinks,
+                        hasKeyboardDropdowns: false, // Will be determined during testing
+                        hasMouseOnlyDropdowns: false, // Will be determined during testing
+                        display: mobileComputedStyle.display,
+                        position: mobileComputedStyle.position
+                    };
+                }, selector);
                 
-                // Check if they should be considered similar
-                const contentSimilar =
-                    el1.linkCount === el2.linkCount &&
-                    el1.linkTexts === el2.linkTexts &&
-                    el1.hasDropdowns === el2.hasDropdowns;
-                
-                // Check if classes are equal using strict comparison
-                const el1Classes = el1.classes.split(' ').filter(c => c.trim() !== '').sort();
-                const el2Classes = el2.classes.split(' ').filter(c => c.trim() !== '').sort();
-                const classesEqual =
-                    el1Classes.length === el2Classes.length &&
-                    el1Classes.every((cls, idx) => cls === el2Classes[idx]);
-                
-                const structureSimilar =
-                    el1.ariaAttributes.ariaLabelText === el2.ariaAttributes.ariaLabelText &&
-                    classesEqual &&
-                    el1.id === el2.id;
-                
-                const shouldBeSimilar = contentSimilar && structureSimilar;
-                
-                // Check if they're actually in the same group
-                const group1 = navInfo.uniqueGroups.find(g => g.indices.includes(i));
-                const group2 = navInfo.uniqueGroups.find(g => g.indices.includes(j));
-                const areInSameGroup = group1 && group2 && group1 === group2;
+                if (mobileData) {
+                    // Update the mobile view data in the fingerprint with proper type casting
+                    group.fingerprint.view.mobile = {
+                        ...mobileData,
+                        menuType: mobileData.menuType as MenuType
+                    };
+                }
+            } catch (error) {
+                console.error(`Error updating mobile data for menu ${menuId}:`, error);
             }
         }
         
+        // Log mobile visibility information
+        for (const group of navInfo.uniqueGroups) {
+            console.log(`\nMobile visibility for menu ${group.menuId}:`);
+            console.log(`  - Mobile visibility: ${group.fingerprint.view.mobile.visibility ? 'Visible' : 'Hidden'}`);
+            console.log(`  - Mobile menu type: ${group.fingerprint.view.mobile.menuType}`);
+            console.log(`  - Mobile visible items: ${group.fingerprint.view.mobile.visibleItems}`);
+        }
+        
+        // Restore original viewport size
+        console.log("Restoring original viewport size");
+        await this.page.setViewportSize(originalViewportSize);
+        
+        return navInfo;
+    }
+    
+    /**
+     * Find unique nav elements by comparing their content and structure
+     * This method coordinates the desktop and mobile viewport testing
+     */
+    async findUniqueNavElements(): Promise<NavInfo> {
+        // First find nav elements in desktop viewport
+        const navInfo = await this.findDesktopNavElements();
+        
+        // Then find mobile-specific information
+        await this.findMobileNavElements(navInfo);
+        
+        // Store the results
         this.uniqueNavElements = navInfo;
         
         return navInfo;
@@ -1179,6 +1377,8 @@ export async function testMenus(page: Page, websiteUrl: string) {
     
     // Create a MenuTester instance
     const menuTester = new MenuTester(page);
+
+    await page.pause();
     
     // Find unique nav elements
     await menuTester.findUniqueNavElements();
