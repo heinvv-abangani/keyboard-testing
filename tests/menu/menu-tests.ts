@@ -157,8 +157,156 @@ export class MenuTester {
                
                // Check visibility in mobile viewport
                const isMobileVisible = (nav: Element) => {
+                   // Get element details for debugging
+                   const tagName = nav.tagName.toLowerCase();
+                   const id = nav.id ? `#${nav.id}` : '';
+                   const classes = Array.from(nav.classList).join(' ');
+                   const selector = tagName + id + (classes ? ` (${classes})` : '');
+                   
+                   console.log(`Checking mobile visibility for: ${selector}`);
+                   console.log('element menuid', fingerprint.menuId);
+                   
+                   // First check basic visibility with checkVisibility()
                    const isHidden = !(nav as HTMLElement).checkVisibility();
-                   return !isHidden;
+                   if (isHidden) {
+                       console.log(`Element is hidden by checkVisibility()`);
+                       return false;
+                   }
+                   
+                   // Get computed style
+                   const style = window.getComputedStyle(nav as HTMLElement);
+                   console.log('style display:', style.display);
+                   console.log('style visibility:', style.visibility);
+                   console.log('style opacity:', style.opacity);
+                   
+                   // Check CSS properties that could hide an element
+                   if (style.display === 'none') {
+                       console.log(`Element is hidden by display: none`);
+                       return false;
+                   }
+                   
+                   if (style.visibility === 'hidden') {
+                       console.log(`Element is hidden by visibility: hidden`);
+                       return false;
+                   }
+                   
+                   if (parseFloat(style.opacity) === 0) {
+                       console.log(`Element is hidden by opacity: 0`);
+                       return false;
+                   }
+                   
+                   // Check if element has zero dimensions
+                   const rect = (nav as HTMLElement).getBoundingClientRect();
+                   console.log(`Element dimensions - width: ${rect.width}, height: ${rect.height}`);
+                   
+                   if (rect.width === 0 || rect.height === 0) {
+                       console.log(`Element has zero dimensions`);
+                       return false;
+                   }
+                   
+                   // Check if element is positioned off-screen
+                   const viewportWidth = window.innerWidth;
+                   const viewportHeight = window.innerHeight;
+                   console.log(`Viewport size - width: ${viewportWidth}, height: ${viewportHeight}`);
+                   
+                   if (rect.right <= 0 || rect.bottom <= 0 ||
+                       rect.left >= viewportWidth || rect.top >= viewportHeight) {
+                       console.log(`Element is positioned off-screen`);
+                       return false;
+                   }
+                   
+                   // Check for transforms that might hide the element
+                   if (style.transform) {
+                       console.log(`Element has transform: ${style.transform}`);
+                       // Check for zero scale transforms
+                       if (style.transform.includes('scale(0') ||
+                           style.transform.includes('scale3d(0')) {
+                           console.log(`Element is hidden by zero scale transform`);
+                           return false;
+                       }
+                   }
+                   
+                   // Check for clip/clip-path that might hide the element
+                   if ((style.clip && style.clip !== 'auto') ||
+                       (style.clipPath && style.clipPath !== 'none')) {
+                       console.log(`Element is hidden by clip/clip-path`);
+                       return false;
+                   }
+                   
+                   // Check for max-height: 0 or height: 0 with overflow: hidden
+                   if (style.overflow === 'hidden') {
+                       console.log(`Element has overflow: hidden`);
+                       if (style.maxHeight === '0px' || parseFloat(style.maxHeight) === 0) {
+                           console.log(`Element is hidden by max-height: 0 and overflow: hidden`);
+                           return false;
+                       }
+                       if (style.height === '0px' || parseFloat(style.height) === 0) {
+                           console.log(`Element is hidden by height: 0 and overflow: hidden`);
+                           return false;
+                       }
+                   }
+                   
+                   // Check if element has aria-hidden="true"
+                   if (nav.getAttribute('aria-hidden') === 'true') {
+                       console.log(`Element has aria-hidden="true"`);
+                       return false;
+                   }
+                   
+                   // Check if element has aria-hidden="true"
+                   if (nav.getAttribute('aria-hidden') === 'true') {
+                       console.log(`Element has aria-hidden="true"`);
+                       return false;
+                   }
+                   
+                   // Check if the element's computed style changes between desktop and mobile viewports
+                   // This is a more reliable way to detect if media queries are affecting the element
+                   console.log(`Current viewport width: ${viewportWidth}`);
+                   
+                   // Create a test div to check if we're in a mobile viewport
+                   const isMobileViewport = viewportWidth <= 1024; // Common breakpoint for tablet/mobile
+                   console.log(`Is mobile viewport: ${isMobileViewport}`);
+                   
+                   // If we're in a mobile viewport, check if the element is actually visible
+                   // by comparing its computed style properties
+                   if (isMobileViewport) {
+                       // Additional checks for mobile visibility
+                       // Check if the element is actually rendered in the layout
+                       if (style.position === 'absolute' &&
+                           (style.left === '-9999px' || style.left === '-999em' ||
+                            parseInt(style.left) < -1000)) {
+                           console.log(`Element is positioned far off-screen in mobile viewport`);
+                           return false;
+                       }
+                       
+                       // Check if the element has a z-index that might hide it behind other elements
+                       if (style.zIndex && parseInt(style.zIndex) < 0) {
+                           console.log(`Element has negative z-index: ${style.zIndex}`);
+                           return false;
+                       }
+                   }
+                   
+                   // Check if at least one child element is visible
+                   const children = Array.from(nav.children);
+                   console.log(`Element has ${children.length} children`);
+                   
+                   if (children.length > 0) {
+                       const hasVisibleChildren = children.some(child => {
+                           const childStyle = window.getComputedStyle(child as HTMLElement);
+                           const isChildVisible = childStyle.display !== 'none' &&
+                                               childStyle.visibility !== 'hidden' &&
+                                               parseFloat(childStyle.opacity) > 0;
+                           return isChildVisible;
+                       });
+                       
+                       if (!hasVisibleChildren) {
+                           console.log(`Element has no visible children`);
+                           return false;
+                       }
+                   }
+                   
+                   // If we've passed all checks, the element is visible
+                   console.log(`Element is considered visible on mobile`);
+                   return true;
                };
                
                // Count visible links in mobile viewport
@@ -595,15 +743,23 @@ export class MenuTester {
             // Get the menu group and fingerprint
             const group = this.uniqueNavElements.uniqueGroups[i];
             const fingerprint = group.fingerprint;
+
+            console.log( fingerprint )
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
             const menu = this.page.locator(menuSelector).first();
+
+            console.log( 'fingerprint', fingerprint.view.mobile.visibility )
+            console.log( 'mobile visible items ', fingerprint.view.mobile.visibleItems)
+            console.log( 'mmenuSelector ', menuSelector);
             
             // If not visible on mobile, skip this menu
             if (!fingerprint.view.mobile.visibility && 0 !== fingerprint.view.mobile.visibleItems) {
                 console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in mobile view`);
                 continue;
             }
+
+            await this.page.pause();
             
             // Use link count from fingerprint
             const linkCount = fingerprint.linkCount;
