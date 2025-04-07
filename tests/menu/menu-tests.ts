@@ -557,7 +557,7 @@ export class MenuTester {
 
             // Check menu is visible in desktop (from the fingerprint information)
             // If not visible, skip iteration
-            if (!fingerprint.view.desktop.visibility) {
+            if (!fingerprint.view.desktop.visibility && 0 !== fingerprint.view.desktop.visibleItems) {
                 console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in desktop view`);
             } else {
                 desktopResults.totalMenuItems += await links.count();
@@ -598,7 +598,7 @@ export class MenuTester {
             const menu = this.page.locator(menuSelector).first();
             
             // If not visible on mobile, skip this menu
-            if (!fingerprint.view.mobile.visibility) {
+            if (!fingerprint.view.mobile.visibility && 0 !== fingerprint.view.mobile.visibleItems) {
                 console.log(`\n\nSkipping menu ${i + 1} (${fingerprint.name}) - not visible in mobile view`);
                 continue;
             }
@@ -652,8 +652,6 @@ export class MenuTester {
         
         // Array to store visible links
         const visibleLinks: number[] = [];
-
-        await this.page.pause();
         
         // Add data-menu-visible-count attribute to each visible link
         for (let i = 0; i < count; i++) {
