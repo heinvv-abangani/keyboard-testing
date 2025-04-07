@@ -640,6 +640,29 @@ export class MenuTester {
         console.log(`2.4.5 Multiple Ways (Level AA): ${combinedResults.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         console.log(`3.2.3 Consistent Navigation (Level AA): ${combinedResults.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         
+        // Update this.uniqueNavElements with the modified fingerprints
+        if (this.uniqueNavElements) {
+            // The fingerprints have already been updated by reference, but we can explicitly log this
+            console.log("\n=== UPDATED NAV FINGERPRINT DATA ===");
+            console.log("Updated NavFingerprint data with interaction behavior information");
+            
+            // Log some of the updated properties for verification
+            for (let i = 0; i < count; i++) {
+                const group = this.uniqueNavElements.uniqueGroups[i];
+                const fingerprint = group.fingerprint;
+                
+                console.log(`\nMenu ${i + 1} (${fingerprint.name}) updated properties:`);
+                console.log(`  - Desktop hasKeyboardDropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns}`);
+                console.log(`  - Desktop hasMouseOnlyDropdowns: ${fingerprint.view.desktop.hasMouseOnlyDropdowns}`);
+                console.log(`  - Opens on Enter: ${fingerprint.interactionBehavior.opensOnEnter}`);
+                console.log(`  - Opens on Space: ${fingerprint.interactionBehavior.opensOnSpace}`);
+                console.log(`  - Opens on MouseOver: ${fingerprint.interactionBehavior.opensOnMouseOver}`);
+                console.log(`  - Opens on Click: ${fingerprint.interactionBehavior.opensOnClick}`);
+                console.log(`  - Closes on Escape: ${fingerprint.interactionBehavior.closesOnEscape}`);
+                console.log(`  - Closes on Click Outside: ${fingerprint.interactionBehavior.closesOnClickOutside}`);
+            }
+        }
+        
         return combinedResults;
     }
 
@@ -903,6 +926,13 @@ export class MenuTester {
         const dropdownItems = menu.locator(selector);
         const dropdownCount = await dropdownItems.count();
         
+        // Update aria attributes in the fingerprint
+        fingerprint.ariaAttributes.hasAriaExpanded = await menu.evaluate(el => el.hasAttribute('aria-expanded'));
+        fingerprint.ariaAttributes.hasAriaControls = await menu.evaluate(el => el.hasAttribute('aria-controls'));
+        fingerprint.ariaAttributes.hasAriaLabel = fingerprint.ariaAttributes.ariaLabelText !== '';
+        fingerprint.ariaAttributes.hasRole = fingerprint.ariaAttributes.roleValue !== '';
+        fingerprint.ariaAttributes.hasAriaPopup = await menu.evaluate(el => el.hasAttribute('aria-haspopup'));
+        
         if (dropdownCount > 0) {
             console.log(`\n=== FOUND ${dropdownCount} DROPDOWN MENU ITEMS (${viewport}) ===`);
             
@@ -927,30 +957,45 @@ export class MenuTester {
                 console.log(`Link count: "${linkCount || rawLinkCount}"`);
                 
                 // Test keyboard accessibility
-                const isKeyboardAccessible = await testDropdownKeyboardAccessibility(this.page, menu, dropdownItem, title);
+                const keyboardResult = await testDropdownKeyboardAccessibility(this.page, menu, dropdownItem, title);
                 
-                if (isKeyboardAccessible) {
+                if (keyboardResult.isAccessible) {
                     results.keyboardAccessibleDropdowns++;
                     // Update fingerprint data based on viewport
                     if (viewport === 'desktop') {
                         fingerprint.view.desktop.hasKeyboardDropdowns = true;
+                        // Update interaction behavior
+                        fingerprint.interactionBehavior.opensOnEnter = keyboardResult.opensOnEnter;
+                        fingerprint.interactionBehavior.opensOnSpace = keyboardResult.opensOnSpace;
+                        fingerprint.interactionBehavior.closesOnEscape = keyboardResult.closesOnEscape;
                     } else {
                         fingerprint.view.mobile.hasKeyboardDropdowns = true;
+                        // Update mobile interaction behavior
+                        fingerprint.interactionBehaviorMobile.opensOnEnter = keyboardResult.opensOnEnter;
+                        fingerprint.interactionBehaviorMobile.opensOnSpace = keyboardResult.opensOnSpace;
+                        fingerprint.interactionBehaviorMobile.closesOnEscape = keyboardResult.closesOnEscape;
                     }
                     
                     // Test focusable dropdown items
                     results = await this.testFocusableDropdownItems(this.page, menu, dropdownItem, results, viewport);
                 } else {
                     // Test mouse interactions
-                    const isMouseAccessible = await testMouseInteractions(this.page, dropdownItem);
+                    const mouseResult = await testMouseInteractions(this.page, dropdownItem);
                     
-                    if (isMouseAccessible) {
+                    if (mouseResult.isAccessible) {
                         results.mouseOnlyDropdowns++;
                         // Update fingerprint data based on viewport
                         if (viewport === 'desktop') {
                             fingerprint.view.desktop.hasMouseOnlyDropdowns = true;
+                            // Update interaction behavior
+                            fingerprint.interactionBehavior.opensOnMouseOver = mouseResult.opensOnMouseOver;
+                            fingerprint.interactionBehavior.opensOnClick = mouseResult.opensOnClick;
+                            fingerprint.interactionBehavior.closesOnClickOutside = mouseResult.closesOnClickOutside;
                         } else {
                             fingerprint.view.mobile.hasMouseOnlyDropdowns = true;
+                            // Update mobile interaction behavior
+                            fingerprint.interactionBehaviorMobile.opensOnTap = mouseResult.opensOnClick;
+                            fingerprint.interactionBehaviorMobile.closesOnTapOutside = mouseResult.closesOnClickOutside;
                         }
                         console.log(`⚠️ Dropdown is only accessible with mouse interactions (${viewport})`);
                     } else {
