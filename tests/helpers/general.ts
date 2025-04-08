@@ -596,7 +596,7 @@ export async function detectAndClosePopup(page: Page) {
                 // Don't attempt to close chat widgets
             }
         }
-    } catch (error) {
+    } catch (error: any) {
         console.log('Error checking for chat widgets:', error.message);
     }
     
@@ -612,11 +612,28 @@ export async function detectAndClosePopup(page: Page) {
             '.consent-popup',
             '.cookie-notice',
             '.cli-modal',
-            'div:has-text("Onze website gebruikt cookies")',
-            'div:has-text("This website uses cookies")',
-            'div:has-text("We use cookies")'
+            // Text-based selectors need to be handled differently
+            // We'll use more generic selectors and check text content in code
+            'div.cookie-banner',
+            'div.cookie-notice',
+            'div.cookie-consent',
+            'div.cookie-popup',
+            '#cookie-banner',
+            '#cookie-notice',
+            '#cookie-consent',
+            '#cookie-popup'
+        ];
+        // Add text-based detection for cookie popups
+        const cookieTexts = [
+            "Onze website gebruikt cookies",
+            "This website uses cookies",
+            "We use cookies",
+            "Cookie Policy",
+            "Cookie Notice",
+            "Cookie Consent"
         ];
 
+        // First try the specific selectors
         for (const selector of cookiePopupSelectors) {
             const popup = await page.locator(selector).first();
             const isVisible = await popup.isVisible().catch(() => false);
@@ -685,7 +702,7 @@ export async function detectAndClosePopup(page: Page) {
             await page.waitForTimeout(500);
             return true;
         }
-    } catch (error) {
+    } catch (error: any) {
         console.log('Error handling cookie popup:', error.message);
     }
 
@@ -740,6 +757,7 @@ export async function detectAndClosePopup(page: Page) {
                 console.log(`Found popup: ${selector}`);
                 
                 // Try to find and click close buttons
+                // This is fine because we're using Playwright's locator which supports :has-text()
                 const closeButton = await popup.locator(
                     'button.close, .close-button, .dismiss, .btn-close, ' +
                     '[aria-label="Close"], [aria-label="Dismiss"], ' +
@@ -790,16 +808,29 @@ export async function detectAndClosePopup(page: Page) {
             
             // Function to check if an element has a visible close button
             const hasCloseButton = (el) => {
-                // Look for close buttons within this element
+                // Look for close buttons within this element using standard DOM selectors
                 const closeButton = el.querySelector(
                     'button.close, .close-button, .dismiss, .btn-close, ' +
                     '[aria-label="Close"], [aria-label="Dismiss"], ' +
-                    '[class*="close"], [id*="close"], ' +
-                    'button:has-text("Close"), button:has-text("Dismiss"), ' +
-                    'button:has-text("×"), button:has-text("✕"), button:has-text("✖")'
+                    '[class*="close"], [id*="close"]'
                 );
                 
-                return closeButton !== null && 
+                // For text-based detection, we need to check each button manually
+                if (!closeButton) {
+                    const buttons = el.querySelectorAll('button');
+                    for (const btn of Array.from(buttons)) {
+                        const buttonElement = btn as HTMLElement;
+                        const text = buttonElement.textContent || '';
+                        if (text.includes('Close') || text.includes('Dismiss') ||
+                            text.includes('×') || text.includes('✕') || text.includes('✖')) {
+                            return window.getComputedStyle(buttonElement).display !== 'none' &&
+                                   window.getComputedStyle(buttonElement).visibility !== 'hidden';
+                        }
+                    }
+                    return false;
+                }
+                
+                return closeButton !== null &&
                        window.getComputedStyle(closeButton).display !== 'none' &&
                        window.getComputedStyle(closeButton).visibility !== 'hidden';
             };
@@ -855,7 +886,7 @@ export async function detectAndClosePopup(page: Page) {
         });
         
         if (potentialPopups.length > 0) {
-            console.log('Found potential floating elements:', potentialPopups);
+            // console.log('Found potential floating elements:', potentialPopups);
             
             // Only try to close elements that:
             // 1. Have a close button
@@ -863,8 +894,6 @@ export async function detectAndClosePopup(page: Page) {
             const actualPopups = potentialPopups.filter(p => p.hasCloseButton && !p.isChatWidget);
             
             if (actualPopups.length > 0) {
-                console.log('Identified actual popups with close buttons:', actualPopups);
-                
                 // Try to close each actual popup
                 for (const popupInfo of actualPopups) {
                     const popup = await page.locator(popupInfo.selector).first();
@@ -874,6 +903,7 @@ export async function detectAndClosePopup(page: Page) {
                         console.log(`Attempting to close popup: ${popupInfo.selector}`);
                         
                         // Find and click the close button
+                        // Use Playwright's locator which supports :has-text()
                         const closeButton = await popup.locator(
                             'button.close, .close-button, .dismiss, .btn-close, ' +
                             '[aria-label="Close"], [aria-label="Dismiss"], ' +
@@ -901,7 +931,7 @@ export async function detectAndClosePopup(page: Page) {
                 await page.waitForTimeout(1000);
             }
         }
-    } catch (error) {
+    } catch (error: any) {
         console.log('Error detecting general popups:', error.message);
     }
     
