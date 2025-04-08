@@ -17,23 +17,20 @@ export class ToggleTester {
     }
     
     /**
-     * Find toggle elements that control menus
+     * Find all potential toggle elements without filtering
      */
-    async findToggleElements(menuIds: string[] = []): Promise<ToggleInfo> {
-        console.log("\n=== CHECKING FOR TOGGLE ELEMENTS ===");
+    async findAllPotentialToggleElements(): Promise<ToggleInfo> {
+        console.log("\n=== FINDING ALL POTENTIAL TOGGLE ELEMENTS ===");
         
-        const toggleInfo = await this.page.evaluate((menuIds) => {
+        const toggleInfo = await this.page.evaluate(() => {
             const toggleElements = Array.from(document.querySelectorAll(
-                'button[aria-expanded]:not([data-menu-id] button[aria-expanded]):not([data-menu-id] *), ' +
-                '[role="button"][aria-expanded]:not([data-menu-id] [role="button"][aria-expanded]):not([data-menu-id] *), ' +
-                'a[aria-expanded]:not([data-menu-id] a[aria-expanded]):not([data-menu-id] *), ' +
-                'button[aria-controls]:not([data-menu-id] button[aria-controls]):not([data-menu-id] *), ' +
-                '[role="button"][aria-controls]:not([data-menu-id] [role="button"][aria-controls]):not([data-menu-id] *), ' +
-                'a[aria-controls]:not([data-menu-id] a[aria-controls]):not([data-menu-id] *), ' +
-                '.hamburger:not([data-menu-id] .hamburger):not([data-menu-id] *), ' +
-                '.menu-toggle:not([data-menu-id] .menu-toggle):not([data-menu-id] *), ' +
-                '.navbar-toggle:not([data-menu-id] .navbar-toggle):not([data-menu-id] *)'
+                '[aria-expanded]:not([data-menu-id]), [aria-expanded]:not([data-menu-id] *), ' +
+                '[aria-controls]:not([data-menu-id]), [aria-controls]:not([data-menu-id] *), ' +
+                '.hamburger:not([data-menu-id]), .hamburger:not([data-menu-id] *), ' +
+                '.menu-toggle:not([data-menu-id]), .menu-toggle:not([data-menu-id] *), ' +
+                '.navbar-toggle:not([data-menu-id]), .navbar-toggle:not([data-menu-id] *)'
             ));
+
             const toggleDetails: any[] = [];
 
             toggleElements.forEach((toggle, index) => {
@@ -44,70 +41,61 @@ export class ToggleTester {
             });
             
             for (const toggle of toggleElements) {
+
+                // Todo:
+                // Handle visibility differently.
+                // Save visibility for mobile and desktop in fingerprint views.
+
+
+                
                 // Skip invisible toggles
-                const rect = toggle.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) {
-                    const toggleId = toggle.getAttribute('data-toggle-id');
-                    console.log(`Toggle ${toggleId} is not visible, skipping...`);
-                    continue;
-                }
+                // const rect = toggle.getBoundingClientRect();
+                // if (rect.width === 0 || rect.height === 0) {
+                //     const toggleId = toggle.getAttribute('data-toggle-id');
+                //     console.log(`Toggle ${toggleId} is not visible, skipping...`);
+                //     continue;
+                // }
                 
-                // Check if the element is hidden
-                const isHiddenByMediaQuery = (() => {
-                    // Check if element is hidden using offsetParent (most reliable method)
-                    const isHidden = (toggle as HTMLElement).offsetParent === null;
-                    if (isHidden) {
-                        return true;
-                    }
+                // // Check if the element is hidden
+                // const isHiddenByMediaQuery = (() => {
+                //     // Check if element is hidden using offsetParent (most reliable method)
+                //     const isHidden = (toggle as HTMLElement).offsetParent === null;
+                //     if (isHidden) {
+                //         return true;
+                //     }
                     
-                    // Check for menu toggles that might be hidden on desktop
-                    const classes = Array.from(toggle.classList);
-                    const isLikelyMobileToggle = classes.some(cls =>
-                        cls.includes('mobile') ||
-                        cls.includes('menu-toggle') ||
-                        cls.includes('hamburger') ||
-                        cls.includes('menu--tablet')
-                    );
+                //     // Check for menu toggles that might be hidden on desktop
+                //     const classes = Array.from(toggle.classList);
+                //     const isLikelyMobileToggle = classes.some(cls =>
+                //         cls.includes('mobile') ||
+                //         cls.includes('menu-toggle') ||
+                //         cls.includes('hamburger') ||
+                //         cls.includes('menu--tablet')
+                //     );
                     
-                    // Check if we're on desktop (viewport width >= 1025px)
-                    const isDesktopViewport = window.innerWidth >= 1025;
+                //     // Check if we're on desktop (viewport width >= 1025px)
+                //     const isDesktopViewport = window.innerWidth >= 1025;
                     
-                    // If it's a likely mobile toggle and we're on desktop, check if it's actually hidden
-                    if (isLikelyMobileToggle && isDesktopViewport) {
-                        // Check computed style to confirm it's actually hidden
-                        const style = window.getComputedStyle(toggle);
-                        if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
-                            return true;
-                        }
-                    }
+                //     // If it's a likely mobile toggle and we're on desktop, check if it's actually hidden
+                //     if (isLikelyMobileToggle && isDesktopViewport) {
+                //         // Check computed style to confirm it's actually hidden
+                //         const style = window.getComputedStyle(toggle);
+                //         if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                //             return true;
+                //         }
+                //     }
                     
-                    // Check computed style for any element
-                    const style = window.getComputedStyle(toggle);
-                    return style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
-                })();
+                //     // Check computed style for any element
+                //     const style = window.getComputedStyle(toggle);
+                //     return style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
+                // })();
                 
-                if (isHiddenByMediaQuery) {
-                    const toggleId = toggle.getAttribute('data-toggle-id');
-                    console.log(`Toggle ${toggleId} is hidden by CSS media query, skipping...`);
-                    continue;
-                }
+                // if (isHiddenByMediaQuery) {
+                //     const toggleId = toggle.getAttribute('data-toggle-id');
+                //     console.log(`Toggle ${toggleId} is hidden by CSS media query, skipping...`);
+                //     continue;
+                // }
                 
-                // Check if aria-controls refers to a nav element
-                if (toggle.hasAttribute('aria-controls')) {
-                    const controlledId = toggle.getAttribute('aria-controls');
-                    const toggleId = toggle.getAttribute('data-toggle-id');
-                    
-                    // Try to find the element by ID first
-                    let element = document.getElementById(controlledId || '');
-                    
-                    // Check if the element exists and is a nav element
-                    // Instead of checking the element's tag name, use menuIds to check if this ID is a known menu
-                    if (!element || !controlledId || !menuIds.includes(controlledId)) {
-                        // Skip if not a nav element
-                        console.log(`Toggle ${toggleId} has aria-controls="${controlledId}" but it does not refer to a nav element, skipping...`);
-                        continue;
-                    }
-                }
                 // Function to determine icon type
                 const determineIconType = (element: Element): string => {
                     const classes = Array.from(element.classList);
@@ -197,38 +185,139 @@ export class ToggleTester {
                 };
                 
                 // Create a simple selector for identification
-                // Use .first() to ensure we always get the first matching element
                 const selector = `[data-toggle-id="${fingerprint.toggleId}"]`;
                 
+                // Don't include the element property as it can't be serialized
                 toggleDetails.push({
                     selector,
-                    fingerprint,
-                    element: toggle
+                    fingerprint
                 });
             }
+            
+            // Log toggle elements directly in the browser context
+            console.log("\n=== DIRECT LIST OF ALL TOGGLE ELEMENTS ===");
+
+            toggleElements.forEach((toggle, index) => {
+                const ariaLabel = toggle.getAttribute('aria-label') || 'N/A';
+                const id = toggle.id || 'N/A';
+                const selector = `[data-toggle-id="${toggle.getAttribute('data-toggle-id')}"]`;
+                console.log(`${index + 1}. '${ariaLabel}' | '${id}' | '${selector}'`);
+            });
             
             return {
                 total: toggleElements.length,
                 toggleDetails: toggleDetails,
                 toggleIds: toggleDetails.map(t => t.fingerprint.toggleId)
             };
-        }, menuIds);
+        });
         
-        console.log(`Found ${toggleInfo.total} toggle elements`);
+        console.log(`Found ${toggleInfo.total} potential toggle elements`);
         
-        for (let i = 0; i < toggleInfo.toggleDetails.length; i++) {
-            const toggle = toggleInfo.toggleDetails[i];
-            console.log(`\nToggle ${i + 1} (ID: ${toggle.fingerprint.toggleId}):`);
-            console.log(`  - Element: ${toggle.selector}`);
-            console.log(`  - Text: "${toggle.fingerprint.text}"`);
+        // List all toggle elements by aria-label, id, and CSS selector
+        console.log("\n=== LIST OF ALL POTENTIAL TOGGLE ELEMENTS ===");
+        console.log(`Total toggle elements: ${toggleInfo.total}`);
+        
+        // Create a simplified list of toggle elements
+        const toggleList = toggleInfo.toggleDetails.map((toggle, index) => {
+            const ariaLabel = toggle.fingerprint.ariaAttributes.ariaLabelText || 'N/A';
+            const id = toggle.fingerprint.id || 'N/A';
+            const cssSelector = toggle.selector;
+            return `${index + 1}. '${ariaLabel}' | '${id}' | '${cssSelector}'`;
+        });
+        
+        // Log each toggle element
+        toggleList.forEach(item => console.log(item));
+        
+        return toggleInfo;
+    }
+    
+    /**
+     * Filter toggle elements based on menuIds
+     */
+    async filterToggleElementsByMenuIds(toggleInfo: ToggleInfo, menuIds: string[] = []): Promise<ToggleInfo> {
+        console.log("\n=== FILTERING TOGGLE ELEMENTS BY MENU IDS ===");
+        
+        if (menuIds.length === 0) {
+            console.log("No menuIds provided, returning all toggle elements");
+            return toggleInfo;
+        }
+        
+        // Filter toggle elements based on menuIds
+        const filteredToggleDetails = await this.page.evaluate((data: { toggleSelectors: string[], menuIds: string[] }) => {
+            const { toggleSelectors, menuIds } = data;
+            const filteredDetails: string[] = [];
             
-            if (toggle.fingerprint.ariaAttributes.hasAriaExpanded) {
-                console.log(`  - aria-expanded: ${toggle.fingerprint.ariaAttributes.ariaExpandedValue}`);
+            for (const selector of toggleSelectors) {
+                const toggle = document.querySelector(selector);
+                if (!toggle) continue;
+                
+                // Check if aria-controls refers to a nav element in menuIds
+                if (toggle.hasAttribute('aria-controls')) {
+                    const controlledId = toggle.getAttribute('aria-controls');
+                    
+                    // Try to find the element by ID first
+                    let element = document.getElementById(controlledId || '');
+                    
+                    // Check if the element exists and is in menuIds
+                    if (!element || !controlledId || !menuIds.includes(controlledId)) {
+                        // Skip if not in menuIds
+                        console.log(`Toggle with selector ${selector} has aria-controls="${controlledId}" but it does not refer to a menu in menuIds, skipping...`);
+                        continue;
+                    }
+                }
+                
+                // Get the toggle's data-toggle-id
+                const toggleId = toggle.getAttribute('data-toggle-id');
+                
+                // Add to filtered details if not null
+                if (toggleId) {
+                    filteredDetails.push(toggleId);
+                }
             }
             
-            if (toggle.fingerprint.ariaAttributes.hasAriaControls) {
-                console.log(`  - aria-controls: ${toggle.fingerprint.ariaAttributes.ariaControlsValue}`);
-            }
+            return filteredDetails;
+        }, { toggleSelectors: toggleInfo.toggleDetails.map(t => t.selector), menuIds });
+        
+        // Create a new ToggleInfo object with filtered details
+        const filteredToggleInfo: ToggleInfo = {
+            total: filteredToggleDetails.length,
+            toggleDetails: toggleInfo.toggleDetails.filter(t => filteredToggleDetails.includes(t.fingerprint.toggleId)),
+            toggleIds: filteredToggleDetails
+        };
+        
+        console.log(`Filtered to ${filteredToggleInfo.total} toggle elements that control menus in menuIds`);
+        
+        // List filtered toggle elements
+        console.log("\n=== LIST OF FILTERED TOGGLE ELEMENTS ===");
+        
+        // Create a simplified list of toggle elements
+        const toggleList = filteredToggleInfo.toggleDetails.map((toggle, index) => {
+            const ariaLabel = toggle.fingerprint.ariaAttributes.ariaLabelText || 'N/A';
+            const id = toggle.fingerprint.id || 'N/A';
+            const cssSelector = toggle.selector;
+            return `${index + 1}. '${ariaLabel}' | '${id}' | '${cssSelector}'`;
+        });
+        
+        // Log each toggle element
+        toggleList.forEach(item => console.log(item));
+        
+        return filteredToggleInfo;
+    }
+    
+    /**
+     * Find toggle elements that control menus
+     * This method is kept for backward compatibility
+     */
+    async findToggleElements(menuIds: string[] = []): Promise<ToggleInfo> {
+        console.log("\n=== CHECKING FOR TOGGLE ELEMENTS ===");
+        
+        // First find all potential toggle elements
+        const allToggleElements = await this.findAllPotentialToggleElements();
+        
+        // Then filter them based on menuIds if provided
+        let toggleInfo = allToggleElements;
+        if (menuIds.length > 0) {
+            toggleInfo = await this.filterToggleElementsByMenuIds(allToggleElements, menuIds);
         }
         
         // Store the toggle elements in the class property
