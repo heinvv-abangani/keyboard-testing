@@ -1241,6 +1241,10 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
     
     // Find toggle elements that are filtered based on menuIds
     const toggleInfo = await toggleTester.findToggleElements(menuIds);
+
+    // TODO:
+    // Remove potential duplicates.
+    // Compare the checks for menus to remove duplicates.
     
     console.log(`\n=== USING FILTERED TOGGLE ELEMENTS ===`);
     console.log(`Testing only ${toggleInfo.total} filtered toggle elements`);
@@ -1427,6 +1431,14 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Press Escape to close the menu
                         await page.keyboard.press('Escape');
                         await page.waitForTimeout(300);
+
+                        // TODO:
+                        // Fully test the menu.
+                        // Are items visible and focusable.
+                        // Are dropdowns accessiblity.
+                        // Same tests as with the first menu tests.
+
+            
                         break;
                     }
                 }
