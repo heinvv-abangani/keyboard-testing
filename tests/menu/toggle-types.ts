@@ -15,16 +15,18 @@ export interface ToggleFingerprint {
     // Structure information
     parentId: string;
     parentClass: string;
-    
-    // Style information
-    display: string;
-    visibility: string;
-    position: string;
-    
-    // Visibility on different devices
-    isVisibleDesktop: boolean;
-    isVisibleMobile: boolean;
-    
+    views: {
+        desktop: {
+            visibility: boolean;
+            display: string;
+            position: string;
+        },
+        mobile: {
+            visibility: boolean;
+            display: string;
+            position: string;
+        }
+    }
     // Accessibility attributes
     ariaAttributes: {
         hasAriaExpanded: boolean;

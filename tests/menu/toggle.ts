@@ -22,6 +22,7 @@ export class ToggleTester {
     async findAllPotentialToggleElements(): Promise<ToggleInfo> {
         console.log("\n=== FINDING ALL POTENTIAL TOGGLE ELEMENTS ===");
         
+        // First, find all toggle elements and get their desktop visibility
         const toggleInfo = await this.page.evaluate(() => {
             const toggleElements = Array.from(document.querySelectorAll(
                 '[aria-expanded]:not([data-menu-id]), [aria-expanded]:not([data-menu-id] *), ' +
@@ -41,60 +42,24 @@ export class ToggleTester {
             });
             
             for (const toggle of toggleElements) {
-
-                // Todo:
-                // Handle visibility differently.
-                // Save visibility for mobile and desktop in fingerprint views.
-
-
+                // Check visibility on desktop using checkVisibility
+                function checkVisibility(element) {
+                    // Check if element is hidden by CSS properties
+                    const style = window.getComputedStyle(element);
+                    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                        return false;
+                    }
+                    
+                    // Check if element has zero dimensions
+                    const rect = element.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) {
+                        return false;
+                    }
+                    
+                    return true;
+                }
                 
-                // Skip invisible toggles
-                // const rect = toggle.getBoundingClientRect();
-                // if (rect.width === 0 || rect.height === 0) {
-                //     const toggleId = toggle.getAttribute('data-toggle-id');
-                //     console.log(`Toggle ${toggleId} is not visible, skipping...`);
-                //     continue;
-                // }
-                
-                // // Check if the element is hidden
-                // const isHiddenByMediaQuery = (() => {
-                //     // Check if element is hidden using offsetParent (most reliable method)
-                //     const isHidden = (toggle as HTMLElement).offsetParent === null;
-                //     if (isHidden) {
-                //         return true;
-                //     }
-                    
-                //     // Check for menu toggles that might be hidden on desktop
-                //     const classes = Array.from(toggle.classList);
-                //     const isLikelyMobileToggle = classes.some(cls =>
-                //         cls.includes('mobile') ||
-                //         cls.includes('menu-toggle') ||
-                //         cls.includes('hamburger') ||
-                //         cls.includes('menu--tablet')
-                //     );
-                    
-                //     // Check if we're on desktop (viewport width >= 1025px)
-                //     const isDesktopViewport = window.innerWidth >= 1025;
-                    
-                //     // If it's a likely mobile toggle and we're on desktop, check if it's actually hidden
-                //     if (isLikelyMobileToggle && isDesktopViewport) {
-                //         // Check computed style to confirm it's actually hidden
-                //         const style = window.getComputedStyle(toggle);
-                //         if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
-                //             return true;
-                //         }
-                //     }
-                    
-                //     // Check computed style for any element
-                //     const style = window.getComputedStyle(toggle);
-                //     return style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
-                // })();
-                
-                // if (isHiddenByMediaQuery) {
-                //     const toggleId = toggle.getAttribute('data-toggle-id');
-                //     console.log(`Toggle ${toggleId} is hidden by CSS media query, skipping...`);
-                //     continue;
-                // }
+                const isVisibleDesktop = checkVisibility(toggle);
                 
                 // Function to determine icon type
                 const determineIconType = (element: Element): string => {
@@ -139,14 +104,19 @@ export class ToggleTester {
                     parentId: toggle.parentElement?.id || '',
                     parentClass: toggle.parentElement?.className || '',
                     
-                    // Style information
-                    display: window.getComputedStyle(toggle).display,
-                    visibility: window.getComputedStyle(toggle).visibility,
-                    position: window.getComputedStyle(toggle).position,
-                    
-                    // Visibility on different devices
-                    isVisibleDesktop: window.getComputedStyle(toggle).display !== 'none' && window.getComputedStyle(toggle).visibility !== 'hidden',
-                    isVisibleMobile: false, // Will be determined during mobile testing
+                    // Views information for different devices
+                    views: {
+                        desktop: {
+                            visibility: checkVisibility(toggle),
+                            display: window.getComputedStyle(toggle).display,
+                            position: window.getComputedStyle(toggle).position
+                        },
+                        mobile: {
+                            visibility: false, // Will be determined during mobile testing
+                            display: "", // Will be determined during mobile testing
+                            position: "" // Will be determined during mobile testing
+                        }
+                    },
                     
                     // Accessibility attributes
                     ariaAttributes: {
@@ -210,6 +180,57 @@ export class ToggleTester {
                 toggleIds: toggleDetails.map(t => t.fingerprint.toggleId)
             };
         });
+        // Store the original viewport size
+        const originalViewportSize = await this.page.viewportSize() || { width: 1280, height: 720 };
+        
+        // Set viewport to mobile size (375x667 - iPhone)
+        await this.page.setViewportSize({ width: 375, height: 667 });
+        
+        // Check visibility on mobile for each toggle
+        for (let i = 0; i < toggleInfo.toggleDetails.length; i++) {
+            const toggle = toggleInfo.toggleDetails[i];
+            const selector = toggle.selector;
+            
+            // Check mobile view properties
+            const mobileViewProps = await this.page.evaluate((selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return { visibility: false, display: "none", position: "static" };
+                
+                // Define checkVisibility function
+                function checkVisibility(element) {
+                    // Check if element is hidden by CSS properties
+                    const style = window.getComputedStyle(element);
+                    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                        return false;
+                    }
+                    
+                    // Check if element has zero dimensions
+                    const rect = element.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) {
+                        return false;
+                    }
+                    
+                    return true;
+                }
+                
+                const style = window.getComputedStyle(element);
+                return {
+                    visibility: checkVisibility(element),
+                    display: style.display,
+                    position: style.position
+                };
+            }, selector);
+            
+            // Update the toggle info with mobile view properties
+            toggleInfo.toggleDetails[i].fingerprint.views.mobile = mobileViewProps;
+        }
+        
+        // Restore the original viewport size
+        await this.page.setViewportSize({
+            width: originalViewportSize.width,
+            height: originalViewportSize.height
+        });
+        await this.page.setViewportSize(originalViewportSize);
         
         console.log(`Found ${toggleInfo.total} potential toggle elements`);
         
