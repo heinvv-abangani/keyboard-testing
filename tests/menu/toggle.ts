@@ -24,13 +24,36 @@ export class ToggleTester {
         
         // First, find all toggle elements and get their desktop visibility
         const toggleInfo = await this.page.evaluate(() => {
-            const toggleElements = Array.from(document.querySelectorAll(
-                '[aria-expanded]:not([data-menu-id]), [aria-expanded]:not([data-menu-id] *), ' +
-                '[aria-controls]:not([data-menu-id]), [aria-controls]:not([data-menu-id] *), ' +
-                '.hamburger:not([data-menu-id]), .hamburger:not([data-menu-id] *), ' +
-                '.menu-toggle:not([data-menu-id]), .menu-toggle:not([data-menu-id] *), ' +
-                '.navbar-toggle:not([data-menu-id]), .navbar-toggle:not([data-menu-id] *)'
-            ));
+            // Identify all menu elements tagged with data-menu-id
+            const menuElements = document.querySelectorAll('[data-menu-id]');
+            const menuElementMap = new Map(
+                Array.from(menuElements).map(el => [el.getAttribute('data-menu-id'), el])
+            );
+
+            console.log(`Found ${menuElements.length} menu elements with data-menu-id attributes`);
+            console.log(`Menu IDs: ${Array.from(menuElementMap.keys()).join(', ')}`);
+
+            // Construct a more readable selector
+            const toggleSelector = [
+                '[aria-expanded]',
+                '[aria-controls]',
+                '.hamburger',
+                '.menu-toggle',
+                '.navbar-toggle'
+            ].map(sel => `${sel}:not([data-menu-id]):not([data-menu-id] *)`).join(', ');
+
+            // Filter out toggle elements that are part of any menu
+            const toggleElements = Array.from(document.querySelectorAll(toggleSelector)).filter((element) => {
+                return !Array.from(menuElementMap.values()).some(menu => {
+                    const inside = menu.contains(element);
+                    if (inside) {
+                        console.log('Excluding toggle element inside a menu');
+                    }
+                    return inside;
+                });
+            });
+            
+            console.log(`Found ${toggleElements.length} toggle elements after filtering out menu elements`);
 
             const toggleDetails: any[] = [];
 
