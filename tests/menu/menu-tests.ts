@@ -1224,6 +1224,157 @@ export class MenuTester {
             }
         }
     }
+    /**
+     * Test a specific menu that has become visible (e.g., after toggling)
+     * This method runs the same tests as iterateMenus() but for a specific menu
+     */
+    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile'): Promise<any> {
+        console.log(`\n=== TESTING SPECIFIC MENU: ${menuSelector} (Viewport: ${viewportToTest || 'both'}) ===`);
+        
+        // Check if uniqueNavElements exists
+        if (!this.uniqueNavElements) {
+            console.log("No nav elements found. Running findUniqueNavElements() first.");
+            await this.findUniqueNavElements();
+        }
+        
+        // Get the menu element
+        const menu = this.page.locator(menuSelector);
+        const count = await menu.count();
+        
+        if (count === 0) {
+            console.log(`Menu not found with selector: ${menuSelector}`);
+            return null;
+        }
+        
+        // Get the menu ID
+        let menuId = await menu.first().evaluate(el => el.getAttribute('data-menu-id'));
+        
+        if (!menuId) {
+            console.log(`Menu does not have a data-menu-id attribute. Adding one...`);
+            const newMenuId = `menu-dynamic-${Date.now()}`;
+            await menu.first().evaluate((el, id) => {
+                el.setAttribute('data-menu-id', id);
+            }, newMenuId);
+            menuId = newMenuId;
+        }
+        
+        console.log(`Testing menu with ID: ${menuId}`);
+        
+        // Find the corresponding menu in uniqueNavElements or add it if not found
+        let menuGroup = this.uniqueNavElements?.uniqueGroups.find(
+            group => group.menuId === menuId
+        );
+        
+        if (!menuGroup) {
+            console.log(`Menu not found in uniqueNavElements. Running full menu tests...`);
+            // Run the full menu tests which will update uniqueNavElements
+            return await this.iterateMenus();
+        }
+        
+        // Create results object similar to iterateMenus()
+        const results = {
+            totalMenus: 1,
+            menusWithAriaAttributes: 0,
+            totalMenuItems: 0,
+            keyboardFocusableItems: 0,
+            keyboardAccessibleDropdowns: 0,
+            mouseOnlyDropdowns: 0,
+            visibleMenuItems: 0,
+            mobileKeyboardFocusableItems: 0,
+            mobileVisibleMenuItems: 0,
+        };
+        
+        // Get the fingerprint
+        const fingerprint = menuGroup.fingerprint;
+        
+        // Store original viewport size to restore later
+        const originalViewportSize = await this.page.viewportSize();
+        
+        // Test in desktop viewport if not specifically testing mobile only
+        if (!viewportToTest || viewportToTest === 'desktop') {
+            console.log("\n=== TESTING SPECIFIC MENU IN DESKTOP VIEWPORT ===");
+            await this.page.setViewportSize({ width: 1280, height: 720 });
+        
+        // Get menu attributes from the fingerprint
+        const menuRole = fingerprint.ariaAttributes.roleValue || '';
+        const menuLabel = fingerprint.ariaAttributes.ariaLabelText || '';
+        const hasLabelledBy = fingerprint.ariaAttributes.hasAriaLabelledBy;
+        
+        console.log(`Menu details:`);
+        console.log(`  - ID: ${menuId}`);
+        console.log(`  - Role: ${menuRole || 'None'}`);
+        console.log(`  - Aria-label: ${menuLabel || 'None'}`);
+        console.log(`  - Has Aria-labelledby: ${hasLabelledBy ? 'Yes' : 'No'}`);
+        
+        // Check if the menu is accessible
+        const hasAriaAttributes = menuRole === 'navigation' || menuLabel !== '' || hasLabelledBy;
+        console.log(`  - hasAriaAttributes ${hasAriaAttributes ? '✅ Yes' : '❌ No'}`);
+        
+        if (hasAriaAttributes) {
+            results.menusWithAriaAttributes++;
+        }
+        
+        // Find all links in the menu
+        const links = menu.locator('a');
+        results.totalMenuItems = await links.count();
+        
+        // Test visible menu items
+        await this.testVisibleMenuItems(menu.first(), fingerprint, results, 'desktop');
+        
+        // Test menu dropdowns
+        await this.testMenuDropdown(menu.first(), fingerprint, results, 'desktop');
+        
+        console.log('Desktop: Number of links: ', results.totalMenuItems);
+        console.log('Desktop: Number of visible links: ', results.visibleMenuItems);
+        console.log('Desktop: Number of focusable links: ', results.keyboardFocusableItems);
+        
+        }
+
+        // Test in mobile viewport if not specifically testing desktop only
+        if (!viewportToTest || viewportToTest === 'mobile') {
+            console.log("\n=== TESTING SPECIFIC MENU IN MOBILE VIEWPORT ===");
+            await this.page.setViewportSize({ width: 375, height: 667 });
+        
+        // Reset counters for mobile
+        const mobileResults = {
+            totalMenus: 1,
+            menusWithAriaAttributes: results.menusWithAriaAttributes,
+            totalMenuItems: results.totalMenuItems,
+            keyboardFocusableItems: 0,
+            keyboardAccessibleDropdowns: 0,
+            mouseOnlyDropdowns: 0,
+            visibleMenuItems: 0,
+        };
+        
+        // Test visible menu items in mobile
+        await this.testVisibleMenuItems(menu.first(), fingerprint, mobileResults, 'mobile');
+        
+        // Test menu dropdowns in mobile
+        await this.testMenuDropdown(menu.first(), fingerprint, mobileResults, 'mobile');
+        
+        console.log('Mobile: Number of links: ', mobileResults.totalMenuItems);
+        console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
+        console.log('Mobile: Number of focusable links: ', mobileResults.keyboardFocusableItems);
+        
+        // Update combined results
+        results.mobileKeyboardFocusableItems = mobileResults.keyboardFocusableItems;
+        results.mobileVisibleMenuItems = mobileResults.visibleMenuItems;
+        
+        }
+        
+        // Restore original viewport size
+        if (originalViewportSize) {
+            await this.page.setViewportSize(originalViewportSize);
+        }
+        
+        // Generate WCAG evaluation
+        console.log(`\n=== WCAG EVALUATION FOR SPECIFIC MENU ===`);
+        console.log(`2.1.1 Keyboard (Level A): ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`2.4.5 Multiple Ways (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`3.2.3 Consistent Navigation (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        
+        return results;
+    }
 }
 
 /**
@@ -1381,6 +1532,15 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Press Escape to close the menu
                         await page.keyboard.press('Escape');
                         await page.waitForTimeout(300);
+                        
+                        // Save which menu became visible in desktop viewport
+                        console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN DESKTOP VIEWPORT ===`);
+                        
+                        // Run the full menu test for this newly visible menu
+                        console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
+                        const menuTester = new MenuTester(page);
+                        await menuTester.testSpecificMenu(menuSelector, 'desktop');
+                        
                         break;
                     }
                 }
@@ -1472,13 +1632,14 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         await page.keyboard.press('Escape');
                         await page.waitForTimeout(300);
 
-                        // TODO:
-                        // Fully test the menu.
-                        // Are items visible and focusable.
-                        // Are dropdowns accessiblity.
-                        // Same tests as with the first menu tests.
-
-            
+                        // Save which menu became visible in mobile viewport
+                        console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
+                        
+                        // Run the full menu test for this newly visible menu
+                        console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
+                        const menuTester = new MenuTester(page);
+                        await menuTester.testSpecificMenu(menuSelector, 'mobile');
+                        
                         break;
                     }
                 }
@@ -1511,6 +1672,8 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
     
     return results;
 }
+
+    
 
 /**
  * Test menus on a page

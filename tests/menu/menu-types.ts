@@ -11,8 +11,8 @@ export enum MenuType {
 // Define view-specific information with expanded properties
 export interface MenuView {
     menuType: MenuType;
-    visibility: boolean;
-    visibleItems: number;
+    visibility: boolean | null;
+    visibleItems: number | null;
     hasKeyboardDropdowns: boolean;
     hasMouseOnlyDropdowns: boolean;
     display: string;
