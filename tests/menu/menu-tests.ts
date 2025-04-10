@@ -1078,7 +1078,9 @@ export class MenuTester {
             await menu.page().waitForTimeout(100);
         }
         
-        console.log(`Found ${focusableCount} keyboard focusable menu items (${viewport})`);
+        // Add a visual indicator if the number of focusable items is different from visible links
+        const indicator = focusableCount < visibleLinks.length ? '❌' : '✅';
+        console.log(`${indicator} Found ${focusableCount} keyboard focusable menu items out of ${visibleLinks.length} visible items (${viewport})`);
         
         // Update the appropriate results counter based on viewport
         if (viewport === 'desktop') {
@@ -1212,7 +1214,12 @@ export class MenuTester {
             }
         }
         
-        console.log(`Found ${focusableCount} keyboard focusable dropdown items (${viewport})`);
+        // Calculate the number of visible links
+        const visibleLinksCount = visibleLinks.length;
+        
+        // Add a red cross indicator if the number of focusable items is different from visible links
+        const indicator = focusableCount < visibleLinksCount ? '❌' : '✅';
+        console.log(`${indicator} Found ${focusableCount} keyboard focusable dropdown items out of ${visibleLinksCount} visible items (${viewport})`);
 
         // Update the appropriate results counter based on viewport
         results.visibleMenuItems = currentCount;
@@ -1911,8 +1918,6 @@ export async function testMenus(page: Page, websiteUrl: string) {
     
     // Create a MenuTester instance
     const menuTester = new MenuTester(page);
-
-    await page.pause();
     
     // Find unique nav elements
     const navInfo = await menuTester.findUniqueNavElements();
