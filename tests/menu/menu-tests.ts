@@ -1242,9 +1242,49 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
     // Find toggle elements that are filtered based on menuIds
     const toggleInfo = await toggleTester.findToggleElements(menuIds);
 
-    // TODO:
-    // Remove potential duplicates.
-    // Compare the checks for menus to remove duplicates.
+    // Remove potential duplicates by creating a unique signature for each toggle
+    // and filtering out duplicates based on this signature
+    console.log(`\n=== REMOVING DUPLICATE TOGGLE ELEMENTS ===`);
+    
+    // Create a map to store unique toggles by their signature
+    const uniqueToggles = new Map<string, typeof toggleInfo.toggleDetails[0]>();
+    
+    // Process each toggle to identify and remove duplicates
+    toggleInfo.toggleDetails.forEach(toggle => {
+        // Create a unique signature based on key properties
+        // Using a combination of properties that would identify a unique toggle
+        const signature = [
+            // If it controls a menu, that's a strong identifier
+            toggle.fingerprint.ariaAttributes.ariaControlsValue,
+            // Include basic identifiers
+            toggle.fingerprint.id,
+            toggle.fingerprint.tagName,
+            // Include parent info to differentiate similar toggles in different containers
+            toggle.fingerprint.parentId,
+            toggle.fingerprint.parentClass,
+            // Include position info which can help differentiate similar toggles
+            JSON.stringify(toggle.fingerprint.views)
+        ].join('|');
+        
+        // Only add to uniqueToggles if this signature hasn't been seen before
+        if (!uniqueToggles.has(signature)) {
+            uniqueToggles.set(signature, toggle);
+        } else {
+            console.log(`Found duplicate toggle: ${toggle.selector}, skipping...`);
+        }
+    });
+    
+    // Update toggleInfo with deduplicated toggles
+    const originalCount = toggleInfo.total;
+    toggleInfo.toggleDetails = Array.from(uniqueToggles.values());
+    toggleInfo.total = toggleInfo.toggleDetails.length;
+    toggleInfo.toggleIds = toggleInfo.toggleDetails.map(t => t.fingerprint.toggleId);
+    
+    if (originalCount !== toggleInfo.total) {
+        console.log(`Removed ${originalCount - toggleInfo.total} duplicate toggle elements`);
+    } else {
+        console.log(`No duplicate toggle elements found`);
+    }
     
     console.log(`\n=== USING FILTERED TOGGLE ELEMENTS ===`);
     console.log(`Testing only ${toggleInfo.total} filtered toggle elements`);
