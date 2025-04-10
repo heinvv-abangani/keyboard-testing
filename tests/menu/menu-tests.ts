@@ -90,20 +90,20 @@ export class MenuTester {
                             menuType: determineMenuType(nav, true) as MenuType,
                             visibility: isVisible(nav),
                             visibleItems: links.filter(link => (link as HTMLElement).checkVisibility).length,
-                            hasKeyboardDropdowns: false, // Will be determined during testing
-                            hasMouseOnlyDropdowns: false, // Will be determined during testing
+                            hasKeyboardDropdowns: null,
+                            hasMouseOnlyDropdowns: null,
                             display: window.getComputedStyle(nav).display,
                             position: window.getComputedStyle(nav).position
                         },
                         mobile: {
                             menuType: determineMenuType(nav, false) as MenuType,
-                            visibility: false, // Will be determined during mobile testing
-                            visibleItems: 0, // Will be determined during mobile testing
-                            hasKeyboardDropdowns: false, // Will be determined during testing
-                            hasMouseOnlyDropdowns: false, // Will be determined during testing
+                            visibility: null,
+                            visibleItems: null,
+                            hasKeyboardDropdowns: null,
+                            hasMouseOnlyDropdowns: null,
                             display: '',
                             position: ''
-                        }
+                        } as MenuView
                     },
                     tagName: nav.tagName.toLowerCase(),
                     id: nav.id,
@@ -126,19 +126,19 @@ export class MenuTester {
                         hasAriaPopup: nav.hasAttribute('aria-haspopup')
                     },
                     interactionBehavior: {
-                        opensOnEnter: false,
-                        opensOnSpace: false,
-                        opensOnMouseOver: false,
-                        opensOnClick: false,
-                        closesOnEscape: false,
+                        opensOnEnter: null,
+                        opensOnSpace: null,
+                        opensOnMouseOver: null,
+                        opensOnClick: null,
+                        closesOnEscape: null,
                         closesOnClickOutside: false
                     },
                     interactionBehaviorMobile: {
-                        opensOnEnter: false,
-                        opensOnSpace: false,
-                        opensOnTap: false,
-                        closesOnEscape: false,
-                        closesOnTapOutside: false
+                        opensOnEnter: null,
+                        opensOnSpace: null,
+                        opensOnTap: null,
+                        closesOnEscape: null,
+                        closesOnTapOutside: null
                     },
                     notes: []
                 };
@@ -177,8 +177,8 @@ export class MenuTester {
                    menuType: determineMenuType(nav, false) as MenuType,
                    visibility: isMobileVisible(nav),
                    visibleItems: mobileVisibleLinks,
-                   hasKeyboardDropdowns: false, // Will be determined during testing
-                   hasMouseOnlyDropdowns: false, // Will be determined during testing
+                   hasKeyboardDropdowns: null,
+                   hasMouseOnlyDropdowns: null,
                    display: mobileComputedStyle.display,
                    position: mobileComputedStyle.position
                };

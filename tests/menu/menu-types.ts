@@ -13,8 +13,8 @@ export interface MenuView {
     menuType: MenuType;
     visibility: boolean | null;
     visibleItems: number | null;
-    hasKeyboardDropdowns: boolean;
-    hasMouseOnlyDropdowns: boolean;
+    hasKeyboardDropdowns: boolean | null;
+    hasMouseOnlyDropdowns: boolean | null;
     display: string;
     position: string;
 }
@@ -50,33 +50,33 @@ export interface NavFingerprint {
     
     // Accessibility attributes
     ariaAttributes: {
-        hasAriaExpanded: boolean;
-        hasAriaControls: boolean;
-        hasAriaLabel: boolean;
-        ariaLabelText: string;
-        hasAriaLabelledBy: boolean;
-        hasRole: boolean;
-        roleValue: string;
-        hasAriaPopup: boolean;
+        hasAriaExpanded: boolean | null;
+        hasAriaControls: boolean | null;
+        hasAriaLabel: boolean | null;
+        ariaLabelText: string | null;
+        hasAriaLabelledBy: boolean | null;
+        hasRole: boolean | null;
+        roleValue: string | null;
+        hasAriaPopup: boolean | null;
     };
     
     // Interaction behavior for desktop
     interactionBehavior: {
-        opensOnEnter: boolean;
-        opensOnSpace: boolean;
-        opensOnMouseOver: boolean;
-        opensOnClick: boolean;
-        closesOnEscape: boolean;
-        closesOnClickOutside: boolean;
+        opensOnEnter: boolean | null;
+        opensOnSpace: boolean | null;
+        opensOnMouseOver: boolean | null;
+        opensOnClick: boolean | null;
+        closesOnEscape: boolean | null;
+        closesOnClickOutside: boolean | null;
     };
     
     // Interaction behavior for mobile
     interactionBehaviorMobile: {
-        opensOnEnter: boolean;
-        opensOnSpace: boolean;
-        opensOnTap: boolean;
-        closesOnEscape: boolean;
-        closesOnTapOutside: boolean;
+        opensOnEnter: boolean | null;
+        opensOnSpace: boolean | null;
+        opensOnTap: boolean | null;
+        closesOnEscape: boolean | null;
+        closesOnTapOutside: boolean | null;
     };
     
     // Notes about the menu
