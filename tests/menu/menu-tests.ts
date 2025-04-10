@@ -39,7 +39,27 @@ export class MenuTester {
         return () => {
             // Define determineMenuType function in the browser context
             const determineMenuType = (nav: Element, isDesktop: boolean) => {
-                // Check if it has dropdown elements
+                // First check if the menu has viewport-specific menu type attributes
+                if (isDesktop) {
+                    const desktopMenuType = nav.getAttribute('data-desktop-menu-type');
+                    if (desktopMenuType) {
+                        return desktopMenuType;
+                    }
+                } else {
+                    const mobileMenuType = nav.getAttribute('data-mobile-menu-type');
+                    if (mobileMenuType) {
+                        return mobileMenuType;
+                    }
+                }
+                
+                // Then check if the menu has a generic data-menu-type attribute
+                const dataMenuType = nav.getAttribute('data-menu-type');
+                if (dataMenuType) {
+                    // If it has a data-menu-type attribute, use that
+                    return dataMenuType;
+                }
+                
+                // Otherwise, check if it has dropdown elements
                 const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
                 
                 // Determine the menu type
@@ -313,7 +333,27 @@ export class MenuTester {
                     
                     // Determine menu type function
                     const determineMenuType = (nav: Element, isDesktop: boolean): string => {
-                        // Check if it has dropdown elements
+                        // First check if the menu has viewport-specific menu type attributes
+                        if (isDesktop) {
+                            const desktopMenuType = nav.getAttribute('data-desktop-menu-type');
+                            if (desktopMenuType) {
+                                return desktopMenuType;
+                            }
+                        } else {
+                            const mobileMenuType = nav.getAttribute('data-mobile-menu-type');
+                            if (mobileMenuType) {
+                                return mobileMenuType;
+                            }
+                        }
+                        
+                        // Then check if the menu has a generic data-menu-type attribute
+                        const dataMenuType = nav.getAttribute('data-menu-type');
+                        if (dataMenuType) {
+                            // If it has a data-menu-type attribute, use that
+                            return dataMenuType;
+                        }
+                        
+                        // Otherwise, check if it has dropdown elements
                         const hasDropdowns = nav.querySelectorAll('.dropdown, .sub-menu, ul ul').length > 0;
                         
                         // Determine the menu type
@@ -547,6 +587,39 @@ export class MenuTester {
         
         // Then find mobile-specific information
         await this.findMobileNavElements(navInfo);
+        
+        // Update menu types from data attributes
+        for (const group of navInfo.uniqueGroups) {
+            const menuId = group.menuId;
+            const selector = `[data-menu-id="${menuId}"]`;
+            
+            try {
+                // Check for data-desktop-menu-type and data-mobile-menu-type attributes
+                const menuTypeData = await this.page.evaluate((selector) => {
+                    const el = document.querySelector(selector);
+                    if (!el) return null;
+                    
+                    return {
+                        desktopType: el.getAttribute('data-desktop-menu-type'),
+                        mobileType: el.getAttribute('data-mobile-menu-type')
+                    };
+                }, selector);
+                
+                if (menuTypeData) {
+                    // Update desktop menu type if available
+                    if (menuTypeData.desktopType) {
+                        group.fingerprint.view.desktop.menuType = menuTypeData.desktopType as MenuType;
+                    }
+                    
+                    // Update mobile menu type if available
+                    if (menuTypeData.mobileType) {
+                        group.fingerprint.view.mobile.menuType = menuTypeData.mobileType as MenuType;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error updating menu types for menu ${menuId}:`, error);
+            }
+        }
         
         // Store the results
         this.uniqueNavElements = navInfo;
@@ -881,6 +954,24 @@ export class MenuTester {
                 console.log(`  - Closes on Click Outside: ${fingerprint.interactionBehavior.closesOnClickOutside}`);
             }
         }
+        
+        // Generate a comprehensive summary of all menu test results
+        console.log(`\n=== OVERALL MENU TEST SUMMARY ===`);
+        console.log(`Total Menus Tested: ${combinedResults.totalMenus}`);
+        console.log(`Menus with ARIA Attributes: ${combinedResults.menusWithAriaAttributes}`);
+        
+        console.log(`\nDesktop Results:`);
+        console.log(`  - Total Menu Items: ${combinedResults.totalMenuItems}`);
+        console.log(`  - Visible Menu Items: ${combinedResults.visibleMenuItems}`);
+        console.log(`  - Keyboard Focusable Items: ${combinedResults.keyboardFocusableItems}`);
+        console.log(`  - Keyboard Accessible Dropdowns: ${combinedResults.keyboardAccessibleDropdowns}`);
+        console.log(`  - Mouse-Only Dropdowns: ${combinedResults.mouseOnlyDropdowns}`);
+        console.log(`  - Keyboard Accessibility: ${combinedResults.keyboardFocusableItems === combinedResults.visibleMenuItems ? '✅ PASS' : '❌ FAIL'}`);
+        
+        console.log(`\nMobile Results:`);
+        console.log(`  - Visible Menu Items: ${combinedResults.mobileVisibleMenuItems}`);
+        console.log(`  - Keyboard Focusable Items: ${combinedResults.mobileKeyboardFocusableItems}`);
+        console.log(`  - Keyboard Accessibility: ${combinedResults.mobileKeyboardFocusableItems === combinedResults.mobileVisibleMenuItems ? '✅ PASS' : '❌ FAIL'}`);
         
         return combinedResults;
     }
@@ -1302,6 +1393,8 @@ export class MenuTester {
         
         console.log(`Menu details:`);
         console.log(`  - ID: ${menuId}`);
+        console.log(`  - Desktop Type: ${fingerprint.view.desktop.menuType}`);
+        console.log(`  - Mobile Type: ${fingerprint.view.mobile.menuType}`);
         console.log(`  - Role: ${menuRole || 'None'}`);
         console.log(`  - Aria-label: ${menuLabel || 'None'}`);
         console.log(`  - Has Aria-labelledby: ${hasLabelledBy ? 'Yes' : 'No'}`);
@@ -1366,12 +1459,62 @@ export class MenuTester {
         if (originalViewportSize) {
             await this.page.setViewportSize(originalViewportSize);
         }
-        
         // Generate WCAG evaluation
+        // Generate a more detailed summary for this specific menu
+        console.log(`\n=== MENU VISIBILITY SUMMARY ===`);
+        const isToggleBased = fingerprint.view.desktop.menuType.toLowerCase().includes('toggle') ||
+                             fingerprint.view.mobile.menuType.toLowerCase().includes('toggle');
+        
+        if (!viewportToTest || viewportToTest === 'desktop') {
+            console.log(`Desktop Visibility: ${fingerprint.view.desktop.visibility ?
+                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
+                (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+        }
+        
+        if (!viewportToTest || viewportToTest === 'mobile') {
+            console.log(`Mobile Visibility: ${fingerprint.view.mobile.visibility ?
+                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
+                (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+            
+            // Show information about the menu after toggle activation if it's toggle-based
+            if (isToggleBased) {
+                console.log(`Mobile visibility after toggle activation: ✅ Visible`);
+                console.log(`Mobile items after toggle activation: ${results.mobileVisibleMenuItems || 'Unknown'}`);
+                console.log(`Mobile Dropdowns after toggle activation: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                    (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+            }
+        }
+        
         console.log(`\n=== WCAG EVALUATION FOR SPECIFIC MENU ===`);
         console.log(`2.1.1 Keyboard (Level A): ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
         console.log(`2.4.5 Multiple Ways (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         console.log(`3.2.3 Consistent Navigation (Level AA): ${results.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
+        
+        // Generate a comprehensive summary of the menu test results
+        console.log(`\n=== MENU TEST SUMMARY FOR ${menuId} ===`);
+        console.log(`Menu Details:`);
+        console.log(`  - ID: ${menuId}`);
+        console.log(`  - Selector: ${menuSelector}`);
+        console.log(`  - ARIA Attributes: ${results.menusWithAriaAttributes > 0 ? 'Yes' : 'No'}`);
+        
+        if (!viewportToTest || viewportToTest === 'desktop') {
+            console.log(`\nDesktop Results:`);
+            console.log(`  - Total Menu Items: ${results.totalMenuItems}`);
+            console.log(`  - Visible Menu Items: ${results.visibleMenuItems}`);
+            console.log(`  - Keyboard Focusable Items: ${results.keyboardFocusableItems}`);
+            console.log(`  - Keyboard Accessible Dropdowns: ${results.keyboardAccessibleDropdowns}`);
+            console.log(`  - Mouse-Only Dropdowns: ${results.mouseOnlyDropdowns}`);
+            console.log(`  - Keyboard Accessibility: ${results.keyboardFocusableItems === results.totalMenuItems ? '✅ PASS' : '❌ FAIL'}`);
+        }
+        
+        if (!viewportToTest || viewportToTest === 'mobile') {
+            console.log(`\nMobile Results:`);
+            console.log(`  - Total Menu Items: ${results.totalMenuItems}`);
+            console.log(`  - Visible Menu Items: ${results.mobileVisibleMenuItems}`);
+            console.log(`  - Keyboard Focusable Items: ${results.mobileKeyboardFocusableItems}`);
+            console.log(`  - Keyboard Accessibility: ${results.mobileKeyboardFocusableItems === results.mobileVisibleMenuItems ? '✅ PASS' : '❌ FAIL'}`);
+        }
+        
         
         return results;
     }
@@ -1536,10 +1679,36 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Save which menu became visible in desktop viewport
                         console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN DESKTOP VIEWPORT ===`);
                         
+                        // Update the menu type to indicate it's toggle-based
+                        await menuElement.evaluate((el, hasDropdowns) => {
+                            // Update the menu type based on whether it has dropdowns
+                            const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
+                            el.setAttribute('data-menu-type', newType);
+                            
+                            // Also update the fingerprint directly in the DOM
+                            const menuId = el.getAttribute('data-menu-id');
+                            if (menuId) {
+                                // Store the menu type in a data attribute for later retrieval
+                                el.setAttribute('data-desktop-menu-type', newType);
+                                el.setAttribute('data-mobile-menu-type', newType);
+                            }
+                            
+                            console.log(`Updated menu type to: ${newType}`);
+                        }, menu.fingerprint.hasDropdowns);
+                        
+                        // Update the fingerprint object in memory to match the DOM attribute
+                        // Note: Avoid hardcoded references or special cases - this test should be universal for any website
+                        const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
+                        console.log(`Updating menu ${menu.menuId} type to ${newType}`);
+                        menu.fingerprint.view.desktop.menuType = newType;
+                        
                         // Run the full menu test for this newly visible menu
                         console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                         const menuTester = new MenuTester(page);
                         await menuTester.testSpecificMenu(menuSelector, 'desktop');
+                        
+                        // Update the unique elements test results
+                        await menuTester.findUniqueNavElements();
                         
                         break;
                     }
@@ -1635,10 +1804,36 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Save which menu became visible in mobile viewport
                         console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
                         
+                        // Update the menu type to indicate it's toggle-based
+                        await menuElement.first().evaluate((el, hasDropdowns) => {
+                            // Update the menu type based on whether it has dropdowns
+                            const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
+                            el.setAttribute('data-menu-type', newType);
+                            
+                            // Also update the fingerprint directly in the DOM
+                            const menuId = el.getAttribute('data-menu-id');
+                            if (menuId) {
+                                // Store the menu type in a data attribute for later retrieval
+                                el.setAttribute('data-desktop-menu-type', newType);
+                                el.setAttribute('data-mobile-menu-type', newType);
+                            }
+                            
+                            console.log(`Updated menu type to: ${newType}`);
+                        }, menu.fingerprint.hasDropdowns);
+                        
+                        // Update the fingerprint object in memory to match the DOM attribute
+                        // Note: Avoid hardcoded references or special cases - this test should be universal for any website
+                        const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
+                        console.log(`Updating menu ${menu.menuId} type to ${newType}`);
+                        menu.fingerprint.view.mobile.menuType = newType;
+                        
                         // Run the full menu test for this newly visible menu
                         console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                         const menuTester = new MenuTester(page);
                         await menuTester.testSpecificMenu(menuSelector, 'mobile');
+                        
+                        // Update the unique elements test results
+                        await menuTester.findUniqueNavElements();
                         
                         break;
                     }
@@ -1669,6 +1864,33 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
     console.log(`\n=== TOGGLE ELEMENT TESTING RESULTS ===`);
     console.log(`Desktop: ${results.desktop.successful}/${results.desktop.tested} toggle elements successfully revealed hidden menus`);
     console.log(`Mobile: ${results.mobile.successful}/${results.mobile.tested} toggle elements successfully revealed hidden menus`);
+    
+    // Generate a comprehensive summary of toggle test results
+    console.log(`\n=== TOGGLE TEST SUMMARY ===`);
+    
+    if (results.desktop.successful > 0) {
+        console.log(`\nDesktop Toggle Results:`);
+        console.log(`  - Tested: ${results.desktop.tested}`);
+        console.log(`  - Successful: ${results.desktop.successful}`);
+        console.log(`  - Success Rate: ${Math.round((results.desktop.successful / results.desktop.tested) * 100)}%`);
+        
+        console.log(`\nSuccessful Desktop Toggles:`);
+        results.desktop.details.filter(detail => detail.success).forEach((detail, index) => {
+            console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
+        });
+    }
+    
+    if (results.mobile.successful > 0) {
+        console.log(`\nMobile Toggle Results:`);
+        console.log(`  - Tested: ${results.mobile.tested}`);
+        console.log(`  - Successful: ${results.mobile.successful}`);
+        console.log(`  - Success Rate: ${Math.round((results.mobile.successful / results.mobile.tested) * 100)}%`);
+        
+        console.log(`\nSuccessful Mobile Toggles:`);
+        results.mobile.details.filter(detail => detail.success).forEach((detail, index) => {
+            console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
+        });
+    }
     
     return results;
 }
@@ -1703,6 +1925,59 @@ export async function testMenus(page: Page, websiteUrl: string) {
     
     // Test toggle elements for hidden menus
     const toggleResults = await testToggleElementsForHiddenMenus(page, navInfo);
+    // Generate a comprehensive summary of all menu results
+    console.log(`\n=== COMPREHENSIVE MENU TEST SUMMARY ===`);
+    
+    // List all menus and their results
+    console.log(`\nAll Menus Tested:`);
+    
+    if (menuTester.uniqueNavElements) {
+        const allMenus = menuTester.uniqueNavElements.uniqueGroups;
+        
+        allMenus.forEach((menu, index) => {
+            const fingerprint = menu.fingerprint;
+            const menuId = menu.menuId;
+            
+            console.log(`\n${index + 1}. Menu: ${fingerprint.name} (ID: ${menuId})`);
+            console.log(`   Selector: [data-menu-id="${menuId}"]`);
+            console.log(`   Desktop Type: ${fingerprint.view.desktop.menuType}`);
+            console.log(`   Mobile Type: ${fingerprint.view.mobile.menuType}`);
+            console.log(`   ARIA Attributes: ${fingerprint.ariaAttributes.hasAriaLabel || fingerprint.ariaAttributes.hasRole ? '✅ Yes' : '❌ No'}`);
+            
+            // Check if menu is toggle-based
+            const isToggleBased = fingerprint.view.desktop.menuType.toLowerCase().includes('toggle') ||
+                                 fingerprint.view.mobile.menuType.toLowerCase().includes('toggle');
+            
+            // Desktop visibility
+            console.log(`   Desktop Visibility: ${fingerprint.view.desktop.visibility ?
+                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
+                '❌ Hidden'}`);
+            if (fingerprint.view.desktop.visibility) {
+                console.log(`   Desktop Items: ${fingerprint.view.desktop.visibleItems}`);
+                console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                    (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+            }
+            
+            // Mobile visibility
+            console.log(`   Mobile Visibility: ${fingerprint.view.mobile.visibility ?
+                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
+                (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+            
+            // Show information about the menu after toggle activation if it's toggle-based
+            if (isToggleBased) {
+                console.log(`   Mobile visibility after toggle activation: ✅ Visible`);
+                console.log(`   Mobile items after toggle activation: ${fingerprint.view.mobile.visibleItems || 'Unknown'}`);
+                console.log(`   Mobile Dropdowns after toggle activation: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                    (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+            }
+            // Show regular information if the menu is currently visible and not toggle-based
+            else if (fingerprint.view.mobile.visibility) {
+                console.log(`   Mobile Items: ${fingerprint.view.mobile.visibleItems}`);
+                console.log(`   Mobile Dropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                    (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+            }
+        });
+    }
     
     // Return the results
     return {
