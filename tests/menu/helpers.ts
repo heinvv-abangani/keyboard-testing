@@ -180,6 +180,26 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
         
         return null;
     });
+
+    // Question HVV:
+    // Can we skip this part for items that are not visible in this viewport?
+    // let expandedLocator = menuItem;
+
+    // const isHidden = await expandedLocator.evaluate((el) => {
+    //     const style = window.getComputedStyle(el);
+    //     const isHidden = style.opacity === '0' || style.visibility === 'hidden' || style.display === 'none';
+    //     const isNotVisible = !el.checkVisibility();
+    //     return isHidden || isNotVisible;
+    // });
+
+    // if ( isHidden ) {
+    //     return {
+    //         isAccessible: false,
+    //         opensOnEnter: false,
+    //         opensOnSpace: false,
+    //         closesOnEscape: false
+    //     };
+    // }
     
     if (hasExpandedElement) {
         // Create a locator for the element with aria-expanded

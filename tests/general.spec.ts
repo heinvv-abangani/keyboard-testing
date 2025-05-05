@@ -21,13 +21,13 @@ import { testMenuScreenReaderAccessibility } from './screen-reader-test.ts';
 
 // List of websites to test
 const testWebsites = [
-    // 'https://academy.bricksbuilder.io/article/menu-builder/',
+    'https://academy.bricksbuilder.io/article/menu-builder/',
     // 'https://labelvier.nl/',
     // 'https://spankrachtontwerpers.nl',
     // 'https://ghost.org/',
     // 'https://www.framer.com/',
     // 'https://webflow.com/',
-    'https://elementor.com/',
+    // 'https://elementor.com/',
     // 'https://www.elegantthemes.com/',
     // 'https://www.d-tec.eu/',
     // 'https://stuurlui.nl/',
