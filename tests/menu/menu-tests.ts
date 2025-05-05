@@ -85,7 +85,12 @@ export class MenuTester {
 
             for (const nav of navElements) {
                 const isVisible = (nav: Element) => {
-                    const isHidden = !(nav as HTMLElement).checkVisibility();
+                    const style = window.getComputedStyle(nav);
+                    const display = style.display;
+                    const opacity = parseFloat(style.opacity);
+                    const isStyleVisible = (display !== 'none' && opacity > 0);
+                    const isElementVisible = (nav as HTMLElement).checkVisibility();
+                    const isHidden = ! isStyleVisible || ! isElementVisible;
 
                     if (isHidden) {
                         const classes = Array.from(nav.classList);
@@ -990,7 +995,12 @@ export class MenuTester {
         for (let i = 0; i < count; i++) {
             const link = links.nth(i);
             const isVisible = await link.evaluate(el => {
-                return (el as HTMLElement).checkVisibility();
+                const style = window.getComputedStyle(el);
+                const display = style.display;
+                const opacity = parseFloat(style.opacity);
+                const isStyleVisible = (display !== 'none' && opacity > 0);
+                const isElementVisible = (el as HTMLElement).checkVisibility();
+                return isStyleVisible && isElementVisible;
             });
             
             if (isVisible) {
@@ -1118,7 +1128,12 @@ export class MenuTester {
         for (let i = 0; i < count; i++) {
             const link = dropdownLinks.nth(i);
             const isVisible = await link.evaluate(el => {
-                return (el as HTMLElement).checkVisibility();
+                const style = window.getComputedStyle(el);
+                const display = style.display;
+                const opacity = parseFloat(style.opacity);
+                const isStyleVisible = (display !== 'none' && opacity > 0);
+                const isElementVisible = (el as HTMLElement).checkVisibility();
+                return isStyleVisible && isElementVisible;
             });
             
             if (isVisible) {
