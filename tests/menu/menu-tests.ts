@@ -71,15 +71,21 @@ export class MenuTester {
             };
             
             // Include hidden menus by also selecting elements with aria-expanded and aria-controls attributes
-            const navElements = Array.from(document.querySelectorAll(
-                'nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'
-            ));
+            const navElements: HTMLElement[] = [];
             const navDetails: any[] = [];
-
-            navElements.forEach((nav, index) => {
-                // Assign a unique data-menu-id if not already set
-                if (!nav.hasAttribute('data-menu-id')) {
-                    nav.setAttribute('data-menu-id', `menu-${index + 1}`);
+            
+            Array.from(document.querySelectorAll(
+                'nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'
+            )).forEach((el, index) => {
+                const nav = el as HTMLElement;
+            
+                if (
+                    !nav.hasAttribute('data-menu-id') &&
+                    !nav.closest('[data-menu-id]:not(:scope)')
+                ) {
+                    const menuId = `menu-${navElements.length + 1}`;
+                    nav.setAttribute('data-menu-id', menuId);
+                    navElements.push(nav);
                 }
             });
 
@@ -207,8 +213,6 @@ export class MenuTester {
                    display: mobileComputedStyle.display,
                    position: mobileComputedStyle.position
                };
-               // Viewport will be handled in a separate method
-                
                 
                 const navSelector = `[data-menu-id="${fingerprint.menuId}"]`;
                 
@@ -1517,6 +1521,7 @@ export class MenuTester {
         console.log(`Menu Details:`);
         console.log(`  - ID: ${menuId}`);
         console.log(`  - Selector: ${menuSelector}`);
+        console.log(`  - Classes: ${menuGroup.fingerprint.classes}`);
         console.log(`  - ARIA Attributes: ${results.menusWithAriaAttributes > 0 ? 'Yes' : 'No'}`);
         
         if (!viewportToTest || viewportToTest === 'desktop') {
@@ -1962,8 +1967,9 @@ export async function testMenus(page: Page, websiteUrl: string) {
             console.log(`   Selector: [data-menu-id="${menuId}"]`);
             console.log(`   Desktop Type: ${fingerprint.view.desktop.menuType}`);
             console.log(`   Mobile Type: ${fingerprint.view.mobile.menuType}`);
+            console.log(`   Classes: ${fingerprint.classes}`);
             console.log(`   ARIA Attributes: ${fingerprint.ariaAttributes.hasAriaLabel || fingerprint.ariaAttributes.hasRole ? '✅ Yes' : '❌ No'}`);
-            
+
             // Check if menu is toggle-based
             const isToggleBased = fingerprint.view.desktop.menuType.toLowerCase().includes('toggle') ||
                                  fingerprint.view.mobile.menuType.toLowerCase().includes('toggle');
