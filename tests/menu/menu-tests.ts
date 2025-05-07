@@ -75,7 +75,7 @@ export class MenuTester {
             const navDetails: any[] = [];
             
             Array.from(document.querySelectorAll(
-                'nav, [role="navigation"], [aria-label][aria-label*="menu"], .menu, .nav, .navigation'
+                'nav, [role="navigation"], .menu, .nav, .navigation'
             )).forEach((el, index) => {
                 const nav = el as HTMLElement;
             
@@ -1063,7 +1063,7 @@ export class MenuTester {
                 isInsideMenu = false;
                 continue;
             }
-            
+
             // Check if the focused element has a menuId property
             if (focusedElement.menuId === undefined || focusedElement.menuId === null) {
                 // Focused element is not inside any menu (e.g., it's in a tab element)
@@ -1345,11 +1345,13 @@ export class MenuTester {
      * Test a specific menu that has become visible (e.g., after toggling)
      * This method runs the same tests as iterateMenus() but for a specific menu
      */
-    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile'): Promise<any> {
+    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile', navInfo?: NavInfo): Promise<any> {
         console.log(`\n=== TESTING SPECIFIC MENU: ${menuSelector} (Viewport: ${viewportToTest || 'both'}) ===`);
-        
-        // Check if uniqueNavElements exists
-        if (!this.uniqueNavElements) {
+
+        // Use provided navInfo or check if uniqueNavElements exists
+        if (navInfo) {
+            this.uniqueNavElements = navInfo;
+        } else if (!this.uniqueNavElements) {
             console.log("No nav elements found. Running findUniqueNavElements() first.");
             await this.findUniqueNavElements();
         }
@@ -1732,7 +1734,8 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Run the full menu test for this newly visible menu
                         console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                         const menuTester = new MenuTester(page);
-                        await menuTester.testSpecificMenu(menuSelector, 'desktop');
+                        // Pass the navInfo to avoid redundant processing
+                        await menuTester.testSpecificMenu(menuSelector, 'desktop', navInfo);
                         
                         // Update the unique elements test results
                         await menuTester.findUniqueNavElements();
@@ -1810,7 +1813,15 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                     const menuElement = page.locator(menuSelector);
                     
                     // Check if menu is now visible
-                    const isMenuVisible = await isElementTrulyVisible(menuElement);
+                    const isMenuVisible = await menuElement.evaluate((el) => {
+                        const style = window.getComputedStyle(el);
+                        const display = style.display;
+                        const opacity = parseFloat(style.opacity);
+                        const isStyleVisible = (display !== 'none' && opacity > 0);
+                        const isElementVisible = el.checkVisibility?.() ?? true;
+                    
+                        return isStyleVisible && isElementVisible;
+                    });
                     
                     if (isMenuVisible) {
                         console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
@@ -1857,7 +1868,8 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Run the full menu test for this newly visible menu
                         console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                         const menuTester = new MenuTester(page);
-                        await menuTester.testSpecificMenu(menuSelector, 'mobile');
+
+                        await menuTester.testSpecificMenu(menuSelector, 'mobile', navInfo);
                         
                         // Update the unique elements test results
                         await menuTester.findUniqueNavElements();
@@ -1943,6 +1955,7 @@ export async function testMenus(page: Page, websiteUrl: string) {
     const navInfo = await menuTester.findUniqueNavElements();
 
     // Iterate through menus using the uniqueNavElements data
+    // The navInfo is already stored in menuTester.uniqueNavElements, so no need to pass it explicitly
     const menuResults = await menuTester.iterateMenus();
     
     // Check for hidden menus
