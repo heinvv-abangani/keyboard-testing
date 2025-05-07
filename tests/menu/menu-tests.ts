@@ -1345,15 +1345,48 @@ export class MenuTester {
      * Test a specific menu that has become visible (e.g., after toggling)
      * This method runs the same tests as iterateMenus() but for a specific menu
      */
-    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile', navInfo?: NavInfo): Promise<any> {
+    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile', navInfo?: NavInfo, toggleSelector?: string): Promise<any> {
         console.log(`\n=== TESTING SPECIFIC MENU: ${menuSelector} (Viewport: ${viewportToTest || 'both'}) ===`);
-
+        
         // Use provided navInfo or check if uniqueNavElements exists
         if (navInfo) {
             this.uniqueNavElements = navInfo;
         } else if (!this.uniqueNavElements) {
             console.log("No nav elements found. Running findUniqueNavElements() first.");
             await this.findUniqueNavElements();
+        }
+        
+        // Check if the menu is visible, and if not, try to activate the toggle
+        if (toggleSelector) {
+            const menu = this.page.locator(menuSelector);
+            const isVisible = await isElementTrulyVisible(menu);
+            
+            if (!isVisible) {
+                console.log(`Menu is not visible. Attempting to activate toggle: ${toggleSelector}`);
+                
+                // Try to locate and click the toggle
+                const toggle = this.page.locator(toggleSelector);
+                const toggleCount = await toggle.count();
+                
+                if (toggleCount > 0) {
+                    // Focus and press Enter on the toggle
+                    await toggle.first().focus();
+                    await this.page.keyboard.press('Enter');
+                    
+                    // Wait for any animations
+                    await this.page.waitForTimeout(500);
+                    
+                    // Check if menu is now visible
+                    const isNowVisible = await isElementTrulyVisible(menu);
+                    if (isNowVisible) {
+                        console.log(`✅ Successfully activated menu using toggle`);
+                    } else {
+                        console.log(`❌ Failed to activate menu using toggle`);
+                    }
+                } else {
+                    console.log(`❌ Toggle element not found: ${toggleSelector}`);
+                }
+            }
         }
         
         // Get the menu element
@@ -1734,8 +1767,8 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         // Run the full menu test for this newly visible menu
                         console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                         const menuTester = new MenuTester(page);
-                        // Pass the navInfo to avoid redundant processing
-                        await menuTester.testSpecificMenu(menuSelector, 'desktop', navInfo);
+                        // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
+                        await menuTester.testSpecificMenu(menuSelector, 'desktop', navInfo, toggleSelector);
                         
                         // Update the unique elements test results
                         await menuTester.findUniqueNavElements();
@@ -1869,7 +1902,8 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
                         console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                         const menuTester = new MenuTester(page);
 
-                        await menuTester.testSpecificMenu(menuSelector, 'mobile', navInfo);
+                        // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
+                        await menuTester.testSpecificMenu(menuSelector, 'mobile', navInfo, toggleSelector);
                         
                         // Update the unique elements test results
                         await menuTester.findUniqueNavElements();
