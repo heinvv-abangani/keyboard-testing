@@ -1177,6 +1177,7 @@ export class MenuTester {
             await menuItem.focus();
         }
         
+        // HVV: The test start to fail when remove the pause.
         await page.pause();
 
         console.log( 'start testFocusableDropdownItems' );
@@ -1248,7 +1249,10 @@ export class MenuTester {
         });
         
         if (!isDropdownOpen) {
+
+            // HVV: The test start to fail when remove the pause.
             await page.pause();
+    
             console.log(`Dropdown is not open. Attempting to open it...`);
             
             // Try to find a dropdown toggle button or link
