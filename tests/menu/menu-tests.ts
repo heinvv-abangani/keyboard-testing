@@ -1206,8 +1206,6 @@ export class MenuTester {
             tabCount++;
             // Press Tab to move to the next element
             await page.keyboard.press('Tab');
-
-            await page.pause();
             
             // Add a small delay to ensure the focus has moved
             await page.waitForTimeout(100);
@@ -1222,7 +1220,9 @@ export class MenuTester {
                 const menuId = menuContainer ? menuContainer.getAttribute('data-menu-id') : null;
                 
                 // Check if this is a dropdown item
-                const isInDropdown = active.closest('ul ul, .dropdown, .sub-menu') !== null;
+                const isDropdownToggle = active.tagName.toLowerCase() === 'button' ||
+                active.hasAttribute('aria-expanded');
+                const hasNotLeftDropdown = isDropdownToggle || active.closest('ul ul, .dropdown, .sub-menu') !== null;
                 
                 // Check if we've already visited this element
                 const currentVisitId = active.getAttribute('data-menu-focus');
@@ -1237,7 +1237,7 @@ export class MenuTester {
                     href: active.getAttribute('href') || '',
                     menuId: menuId,
                     isLink: active.tagName.toLowerCase() === 'a',
-                    isInDropdown: isInDropdown,
+                    hasNotLeftDropdown: hasNotLeftDropdown,
                     visibleCount: active.getAttribute('data-menu-visible-count'),
                     alreadyVisited: alreadyVisited
                 };
@@ -1267,7 +1267,7 @@ export class MenuTester {
             }
 
             // Check if we're still in a dropdown
-            if (!focusedElement.isInDropdown) {
+            if (!focusedElement.hasNotLeftDropdown) {
                 console.log(`Focus moved out of dropdown to menu item: "${focusedElement.text}" (${viewport})`);
                 isInsideMenu = false;
                 continue;
