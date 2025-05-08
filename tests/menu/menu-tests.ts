@@ -986,6 +986,10 @@ export class MenuTester {
     }
 
     private async testVisibleMenuItems(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+        // Generate a unique visit ID to track elements we've already focused
+        const visitId = Math.random().toString(36).substring(2, 32);
+        console.log(`Generated visit ID: ${visitId}`);
+        
         // Find all links in the menu
         const links = menu.locator('a');
         const count = await links.count();
@@ -1036,16 +1040,17 @@ export class MenuTester {
         let focusableCount = 0;
         let isInsideMenu = true;
         let tabCount = 0;
+        let alreadyVisited = false;
         
         // Set a maximum number of tabs to prevent infinite loops
         // Use a reasonable limit based on the number of visible links (e.g., 3 times the number of visible links)
         const maxTabs = Math.min(visibleLinks.length + 2, 30); // At least 30 tabs to handle complex menus
         
-        // Keep pressing Tab until we're outside the menu or reach the maximum tab count
-        while (isInsideMenu && tabCount < maxTabs) {
+        // Keep pressing Tab until we're outside the menu or we encounter an element we've already visited
+        while (isInsideMenu && !alreadyVisited) {
             tabCount++;
             // Get the currently focused element
-            const focusedElement = await menu.page().evaluate(() => {
+            const focusedElement = await menu.page().evaluate((visitId) => {
                 const active = document.activeElement;
                 if (!active) return null;
                 
@@ -1053,14 +1058,22 @@ export class MenuTester {
                 const menuContainer = active.closest('[data-menu-id]');
                 const menuId = menuContainer ? menuContainer.getAttribute('data-menu-id') : null;
                 
+                // Check if we've already visited this element
+                const currentVisitId = active.getAttribute('data-menu-focus');
+                const alreadyVisited = currentVisitId === visitId;
+                
+                // Mark this element as visited
+                active.setAttribute('data-menu-focus', visitId);
+                
                 return {
                     tagName: active.tagName.toLowerCase(),
                     text: active.textContent?.trim() || '',
                     href: active.getAttribute('href') || '',
                     menuId: menuId,
-                    isLink: active.tagName.toLowerCase() === 'a'
+                    isLink: active.tagName.toLowerCase() === 'a',
+                    alreadyVisited: alreadyVisited
                 };
-            });
+            }, visitId);
             
             // Check if we're still inside the menu
             if (!focusedElement) {
@@ -1085,6 +1098,13 @@ export class MenuTester {
                 continue;
             }
             
+            // Check if we've already visited this element
+            if (focusedElement.alreadyVisited) {
+                console.log(`Found already visited element: "${focusedElement.text}". Stopping loop.`);
+                alreadyVisited = true;
+                continue;
+            }
+            
             // If the focused element is a link, increment the counter
             if (focusedElement.isLink) {
                 focusableCount++;
@@ -1098,11 +1118,8 @@ export class MenuTester {
             await menu.page().waitForTimeout(100);
         }
         
-        // Check if we hit the maximum tab count (potential infinite loop)
-        if (tabCount >= maxTabs) {
-            console.log(`⚠️ Warning: Reached maximum tab count (${maxTabs}). Possible infinite loop detected.`);
-            console.log(`⚠️ Tabbed through ${tabCount} elements but only found ${focusableCount} focusable menu items.`);
-        }
+        // Log the tab count for debugging
+        console.log(`Tabbed through ${tabCount} elements and found ${focusableCount} focusable menu items.`);
         
         // Add a visual indicator if the number of focusable items is different from visible links
         const indicator = focusableCount < visibleLinks.length ? '❌' : '✅';
@@ -1124,6 +1141,10 @@ export class MenuTester {
     private async testFocusableDropdownItems(page: Page, menu: Locator, menuItem: Locator, results: any, viewport: 'desktop' | 'mobile' = 'desktop'): Promise<number> {
         console.log(`\n=== TESTING FOCUSABLE DROPDOWN ITEMS (${viewport}) ===`);
         console.log(`Continuing from visible count: ${results.visibleMenuItems}`);
+        
+        // Generate a unique visit ID to track elements we've already focused
+        const visitId = Math.random().toString(36).substring(2, 32);
+        console.log(`Generated visit ID: ${visitId}`);
         
         // Find all dropdown links
         const dropdownLinks = menuItem.locator('ul a, .dropdown a, .sub-menu a');
@@ -1178,22 +1199,21 @@ export class MenuTester {
         let focusableCount = 0;
         let isInsideMenu = true;
         let tabCount = 0;
-        
-        // Set a maximum number of tabs to prevent infinite loops
-        // Use a reasonable limit based on the number of visible links
-        const maxTabs = Math.min(visibleLinks.length + 2, 30); 
+        let alreadyVisited = false;
 
-        // Keep pressing Tab until we're outside the menu or dropdown or reach the maximum tab count
-        while (isInsideMenu && tabCount < maxTabs) {
+        // Keep pressing Tab until we're outside the menu or dropdown or we encounter an element we've already visited
+        while (isInsideMenu && !alreadyVisited) {
             tabCount++;
             // Press Tab to move to the next element
             await page.keyboard.press('Tab');
+
+            await page.pause();
             
             // Add a small delay to ensure the focus has moved
             await page.waitForTimeout(100);
             
             // Get the currently focused element
-            const focusedElement = await page.evaluate(() => {
+            const focusedElement = await page.evaluate((visitId) => {
                 const active = document.activeElement;
                 if (!active) return null;
                 
@@ -1204,6 +1224,13 @@ export class MenuTester {
                 // Check if this is a dropdown item
                 const isInDropdown = active.closest('ul ul, .dropdown, .sub-menu') !== null;
                 
+                // Check if we've already visited this element
+                const currentVisitId = active.getAttribute('data-menu-focus');
+                const alreadyVisited = currentVisitId === visitId;
+                
+                // Mark this element as visited
+                active.setAttribute('data-menu-focus', visitId);
+                
                 return {
                     tagName: active.tagName.toLowerCase(),
                     text: active.textContent?.trim() || '',
@@ -1211,9 +1238,10 @@ export class MenuTester {
                     menuId: menuId,
                     isLink: active.tagName.toLowerCase() === 'a',
                     isInDropdown: isInDropdown,
-                    visibleCount: active.getAttribute('data-menu-visible-count')
+                    visibleCount: active.getAttribute('data-menu-visible-count'),
+                    alreadyVisited: alreadyVisited
                 };
-            });
+            }, visitId);
             
             // Check if we're still inside the menu
             if (!focusedElement) {
@@ -1245,17 +1273,21 @@ export class MenuTester {
                 continue;
             }
             
+            // Check if we've already visited this element
+            if (focusedElement.alreadyVisited) {
+                console.log(`Found already visited element: "${focusedElement.text}". Stopping loop.`);
+                alreadyVisited = true;
+                continue;
+            }
+            
             // If the focused element is a link in the dropdown, increment the counter
             if (focusedElement.isLink) {
                 focusableCount++;
             }
         }
         
-        // Check if we hit the maximum tab count (potential infinite loop)
-        if (tabCount >= maxTabs) {
-            console.log(`⚠️ Warning: Reached maximum tab count (${maxTabs}) in dropdown. Possible infinite loop detected.`);
-            console.log(`⚠️ Tabbed through ${tabCount} elements but only found ${focusableCount} focusable dropdown items.`);
-        }
+        // Log the tab count for debugging
+        console.log(`Tabbed through ${tabCount} elements and found ${focusableCount} focusable dropdown items.`);
         
         // Calculate the number of visible links
         const visibleLinksCount = visibleLinks.length;
