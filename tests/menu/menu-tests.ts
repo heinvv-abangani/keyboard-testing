@@ -1042,14 +1042,20 @@ export class MenuTester {
         let tabCount = 0;
         let alreadyVisited = false;
         
-        // Set a maximum number of tabs to prevent infinite loops
-        // Use a reasonable limit based on the number of visible links (e.g., 3 times the number of visible links)
-        const maxTabs = Math.min(visibleLinks.length + 2, 30); // At least 30 tabs to handle complex menus
+        // Create a map to track elements we've already visited by their unique identifier
+        const visitedElements = new Map();
         
         // Keep pressing Tab until we're outside the menu or we encounter an element we've already visited
         while (isInsideMenu && !alreadyVisited) {
             tabCount++;
-            // Get the currently focused element
+
+            // Press Tab to move to the next element
+            await menu.page().keyboard.press('Tab');
+            
+            // Add a longer delay to ensure the focus has fully moved
+            await menu.page().waitForTimeout(100);
+            
+            // Get the currently focused element with detailed information
             const focusedElement = await menu.page().evaluate((visitId) => {
                 const active = document.activeElement;
                 if (!active) return null;
@@ -1057,6 +1063,17 @@ export class MenuTester {
                 // Get the closest menu container
                 const menuContainer = active.closest('[data-menu-id]');
                 const menuId = menuContainer ? menuContainer.getAttribute('data-menu-id') : null;
+                
+                // Create a unique identifier for this element
+                const elementId = active.id || '';
+                const elementClass = active.className || '';
+                const elementText = active.textContent?.trim() || '';
+                const elementHref = active.getAttribute('href') || '';
+                const elementPath = active.tagName +
+                    (elementId ? '#' + elementId : '') +
+                    (elementClass ? '.' + elementClass.replace(/\s+/g, '.') : '') +
+                    (elementHref ? '[href="' + elementHref + '"]' : '') +
+                    (elementText ? ':contains("' + elementText + '")' : '');
                 
                 // Check if we've already visited this element
                 const currentVisitId = active.getAttribute('data-menu-focus');
@@ -1067,11 +1084,15 @@ export class MenuTester {
                 
                 return {
                     tagName: active.tagName.toLowerCase(),
-                    text: active.textContent?.trim() || '',
-                    href: active.getAttribute('href') || '',
+                    text: elementText,
+                    href: elementHref,
                     menuId: menuId,
                     isLink: active.tagName.toLowerCase() === 'a',
-                    alreadyVisited: alreadyVisited
+                    alreadyVisited: alreadyVisited,
+                    elementPath: elementPath,
+                    tabIndex: (active as HTMLElement).tabIndex,
+                    isFocusable: (active as HTMLElement).tabIndex >= 0 ||
+                                ['a', 'button', 'input', 'select', 'textarea'].includes(active.tagName.toLowerCase())
                 };
             }, visitId);
             
@@ -1098,32 +1119,39 @@ export class MenuTester {
                 continue;
             }
             
-            // Check if we've already visited this element
-            if (focusedElement.alreadyVisited) {
-                console.log(`Found already visited element: "${focusedElement.text}". Stopping loop.`);
+            // Check if we've already visited this element using our map
+            if (focusedElement.elementPath && visitedElements.has(focusedElement.elementPath)) {
+                console.log(`Found already visited element: "${focusedElement.text}" at path ${focusedElement.elementPath}. Stopping loop.`);
                 alreadyVisited = true;
                 continue;
+            }
+            
+            // Add this element to our visited map
+            if (focusedElement.elementPath) {
+                visitedElements.set(focusedElement.elementPath, true);
             }
             
             // If the focused element is a link, increment the counter
             if (focusedElement.isLink) {
                 focusableCount++;
-                console.log(`Focused menu item: "${focusedElement.text}" (${viewport})`);
+                console.log(`Focused menu item: "${focusedElement.text}" (${viewport}) - Path: ${focusedElement.elementPath}`);
             }
-            
-            // Press Tab to move to the next element
-            await menu.page().keyboard.press('Tab');
-            
-            // Add a small delay to ensure the focus has moved
-            await menu.page().waitForTimeout(100);
         }
         
         // Log the tab count for debugging
         console.log(`Tabbed through ${tabCount} elements and found ${focusableCount} focusable menu items.`);
         
         // Add a visual indicator if the number of focusable items is different from visible links
-        const indicator = focusableCount < visibleLinks.length ? '❌' : '✅';
-        console.log(`${indicator} Found ${focusableCount} keyboard focusable menu items out of ${visibleLinks.length} visible items (${viewport})`);
+        // But add a note if the menu closed prematurely
+        let indicator = focusableCount < visibleLinks.length ? '❌' : '✅';
+        let message = `Found ${focusableCount} keyboard focusable menu items out of ${visibleLinks.length} visible items (${viewport})`;
+        
+        if (results.menuClosedPrematurelyOnTab) {
+            indicator = '⚠️';
+            message += ` - Menu closed after ${results.tabCountBeforeMenuClosed} tab press(es)`;
+        }
+        
+        console.log(`${indicator} ${message}`);
         
         // Update the appropriate results counter based on viewport
         if (viewport === 'desktop') {
@@ -1139,6 +1167,21 @@ export class MenuTester {
      * Continues from the current focused element and tests if all visible dropdown items are focusable
      */
     private async testFocusableDropdownItems(page: Page, menu: Locator, menuItem: Locator, results: any, viewport: 'desktop' | 'mobile' = 'desktop'): Promise<number> {
+        // First, ensure we focus on the correct menu item before pausing
+        // Find the first focusable element within the menuItem
+        const focusableElement = menuItem.locator('a, button, [tabindex]:not([tabindex="-1"])').first();
+        if (await focusableElement.count() > 0) {
+            await focusableElement.focus();
+        } else {
+            // If no focusable child element, try to focus the menuItem itself
+            await menuItem.focus();
+        }
+        
+        await page.pause();
+
+        console.log( 'start testFocusableDropdownItems' );
+        console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
+        
         console.log(`\n=== TESTING FOCUSABLE DROPDOWN ITEMS (${viewport}) ===`);
         console.log(`Continuing from visible count: ${results.visibleMenuItems}`);
         
@@ -1191,7 +1234,56 @@ export class MenuTester {
             return 0;
         }
         
-        // We assume the dropdown is already open and a menu item is focused
+        // Check if the dropdown is open, and if not, open it
+        const isDropdownOpen = await menuItem.evaluate(el => {
+            // Check for dropdown elements
+            const dropdown = el.querySelector('ul ul, .dropdown, .sub-menu');
+            if (!dropdown) return false; // No dropdown found
+            
+            // Check if the dropdown is visible
+            const style = window.getComputedStyle(dropdown);
+            return style.display !== 'none' &&
+                   style.visibility !== 'hidden' &&
+                   parseFloat(style.opacity) > 0;
+        });
+        
+        if (!isDropdownOpen) {
+            await page.pause();
+            console.log(`Dropdown is not open. Attempting to open it...`);
+            
+            // Try to find a dropdown toggle button or link
+            const toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
+            
+            if (await toggleButton.count() > 0) {
+                // Click the toggle to open the dropdown
+                await toggleButton.click();
+                
+                // Wait a moment for the dropdown to open
+                await page.waitForTimeout(500);
+                
+                console.log(`Clicked dropdown toggle. Checking if dropdown is now open...`);
+                
+                // Verify the dropdown is now open
+                const isNowOpen = await menuItem.evaluate(el => {
+                    const dropdown = el.querySelector('ul ul, .dropdown, .sub-menu');
+                    if (!dropdown) return false;
+                    
+                    const style = window.getComputedStyle(dropdown);
+                    return style.display !== 'none' &&
+                           style.visibility !== 'hidden' &&
+                           parseFloat(style.opacity) > 0;
+                });
+                
+                if (isNowOpen) {
+                    console.log(`Successfully opened dropdown.`);
+                } else {
+                    console.log(`⚠️ Warning: Failed to open dropdown. Test results may be affected.`);
+                }
+            } else {
+                console.log(`⚠️ Warning: Could not find dropdown toggle element. Test results may be affected.`);
+            }
+        }
+        
         // Get the menu ID for checking if we're still in the menu
         const menuId = await menu.first().evaluate(el => el.getAttribute('data-menu-id'));
         
@@ -1200,6 +1292,11 @@ export class MenuTester {
         let isInsideMenu = true;
         let tabCount = 0;
         let alreadyVisited = false;
+        
+        // Create a map to track elements we've already visited by their unique identifier
+        const visitedElements = new Map();
+
+       // await page.pause();
 
         // Keep pressing Tab until we're outside the menu or dropdown or we encounter an element we've already visited
         while (isInsideMenu && !alreadyVisited) {
@@ -1207,7 +1304,7 @@ export class MenuTester {
             // Press Tab to move to the next element
             await page.keyboard.press('Tab');
             
-            // Add a small delay to ensure the focus has moved
+            // Add a longer delay to ensure the focus has fully moved
             await page.waitForTimeout(100);
             
             // Get the currently focused element
@@ -1231,6 +1328,17 @@ export class MenuTester {
                 // Mark this element as visited
                 active.setAttribute('data-menu-focus', visitId);
                 
+                // Create a unique identifier for this element
+                const elementId = active.id || '';
+                const elementClass = active.className || '';
+                const elementText = active.textContent?.trim() || '';
+                const elementHref = active.getAttribute('href') || '';
+                const elementPath = active.tagName +
+                    (elementId ? '#' + elementId : '') +
+                    (elementClass ? '.' + elementClass.replace(/\s+/g, '.') : '') +
+                    (elementHref ? '[href="' + elementHref + '"]' : '') +
+                    (elementText ? ':contains("' + elementText + '")' : '');
+                
                 return {
                     tagName: active.tagName.toLowerCase(),
                     text: active.textContent?.trim() || '',
@@ -1239,7 +1347,8 @@ export class MenuTester {
                     isLink: active.tagName.toLowerCase() === 'a',
                     hasNotLeftDropdown: hasNotLeftDropdown,
                     visibleCount: active.getAttribute('data-menu-visible-count'),
-                    alreadyVisited: alreadyVisited
+                    alreadyVisited: alreadyVisited,
+                    elementPath: elementPath
                 };
             }, visitId);
             
@@ -1273,11 +1382,16 @@ export class MenuTester {
                 continue;
             }
             
-            // Check if we've already visited this element
-            if (focusedElement.alreadyVisited) {
-                console.log(`Found already visited element: "${focusedElement.text}". Stopping loop.`);
+            // Check if we've already visited this element using our map
+            if (focusedElement.elementPath && visitedElements.has(focusedElement.elementPath)) {
+                console.log(`Found already visited element: "${focusedElement.text}" at path ${focusedElement.elementPath}. Stopping loop.`);
                 alreadyVisited = true;
                 continue;
+            }
+            
+            // Add this element to our visited map
+            if (focusedElement.elementPath) {
+                visitedElements.set(focusedElement.elementPath, true);
             }
             
             // If the focused element is a link in the dropdown, increment the counter
@@ -1285,6 +1399,8 @@ export class MenuTester {
                 focusableCount++;
             }
         }
+
+       // await page.pause();
         
         // Log the tab count for debugging
         console.log(`Tabbed through ${tabCount} elements and found ${focusableCount} focusable dropdown items.`);
@@ -1293,8 +1409,16 @@ export class MenuTester {
         const visibleLinksCount = visibleLinks.length;
         
         // Add a red cross indicator if the number of focusable items is different from visible links
-        const indicator = focusableCount < visibleLinksCount ? '❌' : '✅';
-        console.log(`${indicator} Found ${focusableCount} keyboard focusable dropdown items out of ${visibleLinksCount} visible items (${viewport})`);
+        // But add a note if the dropdown closed prematurely
+        let indicator = focusableCount < visibleLinksCount ? '❌' : '✅';
+        let message = `Found ${focusableCount} keyboard focusable dropdown items out of ${visibleLinksCount} visible items (${viewport})`;
+        
+        if (results.dropdownClosedPrematurelyOnTab) {
+            indicator = '⚠️';
+            message += ` - Dropdown closed after ${results.tabCountBeforeDropdownClosed} tab press(es)`;
+        }
+        
+        console.log(`${indicator} ${message}`);
 
         // Update the appropriate results counter based on viewport
         results.visibleMenuItems = currentCount;
@@ -1306,6 +1430,10 @@ export class MenuTester {
             results.mobileKeyboardFocusableItems += focusableCount;
         }
 
+        console.log( 'end testFocusableDropdownItems' );
+        console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
+        
+
         return results;
     }
 
@@ -1313,6 +1441,10 @@ export class MenuTester {
      * Test menu dropdowns for keyboard and mouse accessibility
      */
     private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+        console.log( 'start with test menu Dropdown' );
+        console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
+        
+        
         const hasListStructure = await menu.locator('li:has(ul)').count() > 0;
         const selector = hasListStructure ? 'li:has(ul)' : '[aria-expanded], [aria-haspopup="true"]';
         const dropdownItems = menu.locator(selector);
@@ -1571,7 +1703,7 @@ export class MenuTester {
             totalMenus: 1,
             menusWithAriaAttributes: results.menusWithAriaAttributes,
             totalMenuItems: results.totalMenuItems,
-            keyboardFocusableItems: 0,
+            mobileKeyboardFocusableItems: 0,
             keyboardAccessibleDropdowns: 0,
             mouseOnlyDropdowns: 0,
             visibleMenuItems: 0,
@@ -1585,10 +1717,10 @@ export class MenuTester {
         
         console.log('Mobile: Number of links: ', mobileResults.totalMenuItems);
         console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
-        console.log('Mobile: Number of focusable links: ', mobileResults.keyboardFocusableItems);
+        console.log('Mobile: Number of focusable links: ', mobileResults.mobileKeyboardFocusableItems);
         
         // Update combined results
-        results.mobileKeyboardFocusableItems = mobileResults.keyboardFocusableItems;
+        // results.mobileKeyboardFocusableItems = mobileResults.keyboardFocusableItems;
         results.mobileVisibleMenuItems = mobileResults.visibleMenuItems;
         
         }
