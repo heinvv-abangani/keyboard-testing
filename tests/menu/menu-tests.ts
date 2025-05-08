@@ -1394,9 +1394,17 @@ export class MenuTester {
                 visitedElements.set(focusedElement.elementPath, true);
             }
             
-            // If the focused element is a link in the dropdown, increment the counter
-            if (focusedElement.isLink) {
+            // Count all focusable elements (links, buttons, or other interactive elements)
+            // This includes both top-level items and dropdown items
+            const isFocusableElement = focusedElement.isLink ||
+                focusedElement.tagName === 'button' ||
+                focusedElement.tagName === 'input' ||
+                focusedElement.tagName === 'select' ||
+                (focusedElement.tagName && focusedElement.text); // Any element with text is likely interactive
+                
+            if (isFocusableElement) {
                 focusableCount++;
+                console.log(`Counting focusable element: "${focusedElement.text}" (${focusedElement.tagName})`);
             }
         }
 
@@ -1717,7 +1725,7 @@ export class MenuTester {
         
         console.log('Mobile: Number of links: ', mobileResults.totalMenuItems);
         console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
-        console.log('Mobile: Number of focusable links: ', mobileResults.mobileKeyboardFocusableItems);
+        console.log('Mobile: Number of focusable items: ', mobileResults.mobileKeyboardFocusableItems);
         
         // Update combined results
         // results.mobileKeyboardFocusableItems = mobileResults.keyboardFocusableItems;
