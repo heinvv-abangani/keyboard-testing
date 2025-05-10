@@ -1812,7 +1812,6 @@ export class MenuTester {
         const navInfo = await this.findUniqueNavElements();
 
         // Iterate through menus using the menuItems data
-        // The navInfo is already stored in this.menuItems, so no need to pass it explicitly
         const menuResults = await this.iterateMenus();
         
         // Check for hidden menus
@@ -1895,7 +1894,6 @@ export class MenuTester {
         // Find toggle elements - use the filtered toggle elements
         const toggleTester = new ToggleTester(this.page);
         
-        // Extract menuIds from navInfo to filter toggle elements
         const menuIds = this.menuItems?.menuIds || [];
         console.log(`Filtering toggle elements using menu IDs: ${menuIds.join(', ')}`);
         
@@ -2070,8 +2068,7 @@ export class MenuTester {
                             
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
-                            
-                            // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
+                           
                             await this.testSpecificMenu(menuSelector, 'desktop', toggleSelector, true);
                             
                             // Update the unique elements test results
@@ -2204,8 +2201,6 @@ export class MenuTester {
                             
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
-                            
-                            // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
                             await this.testSpecificMenu(menuSelector, 'mobile', toggleSelector, true);
                             
                             // Update the unique elements test results
