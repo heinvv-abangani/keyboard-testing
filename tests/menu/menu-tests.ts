@@ -1566,16 +1566,8 @@ export class MenuTester {
      * Test a specific menu that has become visible (e.g., after toggling)
      * This method runs the same tests as iterateMenus() but for a specific menu
      */
-    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile', navInfo?: NavInfo, toggleSelector?: string, openedWithToggle: boolean = false): Promise<any> {
+    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile', toggleSelector?: string, openedWithToggle: boolean = false): Promise<any> {
         console.log(`\n=== TESTING SPECIFIC MENU: ${menuSelector} (Viewport: ${viewportToTest || 'both'}) ===`);
-        
-        // Use provided navInfo or check if uniqueNavElements exists
-        if (navInfo) {
-            this.uniqueNavElements = navInfo;
-        } else if (!this.uniqueNavElements) {
-            console.log("No nav elements found. Running findUniqueNavElements() first.");
-            await this.findUniqueNavElements();
-        }
         
         // Check if the menu is visible, and if not, try to activate the toggle
         if (toggleSelector) {
@@ -1827,7 +1819,7 @@ export class MenuTester {
         const hiddenMenus = await this.checkForHiddenMenus();
         
         // Test toggle elements for hidden menus
-        const toggleResults = await testToggleElementsForHiddenMenus(this.page, navInfo);
+        const toggleResults = await this.testToggleElementsForHiddenMenus();
         
         // Generate a comprehensive summary of all menu results
         console.log(`\n=== COMPREHENSIVE MENU TEST SUMMARY ===`);
@@ -1892,6 +1884,393 @@ export class MenuTester {
             toggleResults
         };
     }
+    
+    /**
+     * Test toggle elements for menus that aren't visible
+     * @param navInfo Navigation information
+     * @returns Test results
+     */
+    async testToggleElementsForHiddenMenus(): Promise<any> {
+        console.log(`\n=== TESTING TOGGLE ELEMENTS FOR HIDDEN MENUS ===`);
+        
+        // Find toggle elements - use the filtered toggle elements
+        const toggleTester = new ToggleTester(this.page);
+        
+        // Extract menuIds from navInfo to filter toggle elements
+        const menuIds = this.uniqueNavElements?.menuIds || [];
+        console.log(`Filtering toggle elements using menu IDs: ${menuIds.join(', ')}`);
+        
+        // Find toggle elements that are filtered based on menuIds
+        const toggleInfo = await toggleTester.findToggleElements(menuIds);
+    
+        // Remove potential duplicates by creating a unique signature for each toggle
+        // and filtering out duplicates based on this signature
+        console.log(`\n=== REMOVING DUPLICATE TOGGLE ELEMENTS ===`);
+        
+        // Create a map to store unique toggles by their signature
+        const uniqueToggles = new Map<string, typeof toggleInfo.toggleDetails[0]>();
+        
+        // Process each toggle to identify and remove duplicates
+        toggleInfo.toggleDetails.forEach(toggle => {
+            // Create a unique signature based on key properties
+            // Using a combination of properties that would identify a unique toggle
+            const signature = [
+                // If it controls a menu, that's a strong identifier
+                toggle.fingerprint.ariaAttributes.ariaControlsValue,
+                // Include basic identifiers
+                toggle.fingerprint.id,
+                toggle.fingerprint.tagName,
+                // Include parent info to differentiate similar toggles in different containers
+                toggle.fingerprint.parentId,
+                toggle.fingerprint.parentClass,
+                // Include position info which can help differentiate similar toggles
+                JSON.stringify(toggle.fingerprint.views)
+            ].join('|');
+            
+            // Only add to uniqueToggles if this signature hasn't been seen before
+            if (!uniqueToggles.has(signature)) {
+                uniqueToggles.set(signature, toggle);
+            } else {
+                console.log(`Found duplicate toggle: ${toggle.selector}, skipping...`);
+            }
+        });
+        
+        // Update toggleInfo with deduplicated toggles
+        const originalCount = toggleInfo.total;
+        toggleInfo.toggleDetails = Array.from(uniqueToggles.values());
+        toggleInfo.total = toggleInfo.toggleDetails.length;
+        toggleInfo.toggleIds = toggleInfo.toggleDetails.map(t => t.fingerprint.toggleId);
+        
+        if (originalCount !== toggleInfo.total) {
+            console.log(`Removed ${originalCount - toggleInfo.total} duplicate toggle elements`);
+        } else {
+            console.log(`No duplicate toggle elements found`);
+        }
+        
+        console.log(`\n=== USING FILTERED TOGGLE ELEMENTS ===`);
+        console.log(`Testing only ${toggleInfo.total} filtered toggle elements`);
+        
+        // Log the filtered toggle elements
+        toggleInfo.toggleDetails.forEach((toggle, index) => {
+            console.log(`${index + 1}. Testing toggle: ${toggle.selector}`);
+        });
+        
+        // Define result types
+        interface ToggleTestDetail {
+            toggleSelector: string;
+            menuId?: string;
+            success: boolean;
+            error?: string;
+        }
+        
+        // Store results
+        const results = {
+            desktop: {
+                tested: 0,
+                successful: 0,
+                details: [] as ToggleTestDetail[]
+            },
+            mobile: {
+                tested: 0,
+                successful: 0,
+                details: [] as ToggleTestDetail[]
+            }
+        };
+        
+        // Get menus that aren't visible on desktop
+        const hiddenDesktopMenus = this.uniqueNavElements?.uniqueGroups.filter(group =>
+            !group.fingerprint.view.desktop.visibility
+        ) || [];
+        
+        console.log(`Found ${hiddenDesktopMenus?.length} menus that aren't visible on desktop`);
+        
+        // Test toggle elements on desktop
+        if (hiddenDesktopMenus?.length > 0) {
+            console.log(`\n=== TESTING TOGGLE ELEMENTS ON DESKTOP ===`);
+            
+            // Ensure we're in desktop viewport
+            await this.page.setViewportSize({ width: 1280, height: 720 });
+            
+            // Loop through toggle elements
+            for (const toggle of toggleInfo.toggleDetails) {
+                const toggleSelector = toggle.selector;
+                
+                try {
+                    console.log(`Testing toggle element: ${toggleSelector}`);
+                    results.desktop.tested++;
+                    
+                    // Check if toggle is visible on desktop using stored information
+                    if (!toggle.fingerprint.views.desktop.visibility) {
+                        console.log(`Toggle element is not visible on desktop according to stored data, skipping`);
+                        continue;
+                    }
+                    
+                    // Try to locate the toggle element
+                    const toggleElement = this.page.locator(toggleSelector).first();
+                    
+                    // Focus the toggle element
+                    await toggleElement.focus();
+                    
+                    // Press Enter key
+                    await this.page.keyboard.press('Enter');
+                    
+                    // Wait a moment for any animations
+                    await this.page.waitForTimeout(500);
+                    
+                    // Check if any of the hidden menus became visible
+                    let menuBecameVisible = false;
+                    
+                    for (const menu of hiddenDesktopMenus) {
+                        const menuSelector = `[data-menu-id="${menu.menuId}"]`;
+                        const menuElement = this.page.locator(menuSelector);
+                        
+                        // Check if menu is now visible
+                        const isMenuVisible = await isElementTrulyVisible(menuElement);
+                        
+                        if (isMenuVisible) {
+                            console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
+                            menuBecameVisible = true;
+                            
+                            // Add to results
+                            results.desktop.successful++;
+                            results.desktop.details.push({
+                                toggleSelector,
+                                menuId: menu.menuId,
+                                success: true
+                            });
+                            
+                            // Press Escape to close the menu
+                            await this.page.keyboard.press('Escape');
+                            await this.page.waitForTimeout(300);
+                            
+                            // Save which menu became visible in desktop viewport
+                            console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN DESKTOP VIEWPORT ===`);
+                            
+                            // Update the menu type to indicate it's toggle-based
+                            await menuElement.evaluate((el, hasDropdowns) => {
+                                // Update the menu type based on whether it has dropdowns
+                                const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
+                                el.setAttribute('data-menu-type', newType);
+                                
+                                // Also update the fingerprint directly in the DOM
+                                const menuId = el.getAttribute('data-menu-id');
+                                if (menuId) {
+                                    // Store the menu type in a data attribute for later retrieval
+                                    el.setAttribute('data-desktop-menu-type', newType);
+                                    el.setAttribute('data-mobile-menu-type', newType);
+                                }
+                                
+                                console.log(`Updated menu type to: ${newType}`);
+                            }, menu.fingerprint.hasDropdowns);
+                            
+                            // Update the fingerprint object in memory to match the DOM attribute
+                            // Note: Avoid hardcoded references or special cases - this test should be universal for any website
+                            const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
+                            console.log(`Updating menu ${menu.menuId} type to ${newType}`);
+                            menu.fingerprint.view.desktop.menuType = newType;
+                            
+                            // Run the full menu test for this newly visible menu
+                            console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
+                            
+                            // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
+                            await this.testSpecificMenu(menuSelector, 'desktop', toggleSelector, true);
+                            
+                            // Update the unique elements test results
+                            await this.findUniqueNavElements();
+                            
+                            break;
+                        }
+                    }
+                    
+                    if (!menuBecameVisible) {
+                        console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
+                        results.desktop.details.push({
+                            toggleSelector,
+                            success: false
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error testing toggle element ${toggleSelector} on desktop:`, error);
+                    results.desktop.details.push({
+                        toggleSelector,
+                        success: false,
+                        error: error.message
+                    });
+                }
+            }
+        }
+        
+        // Get menus that aren't visible on mobile
+        const hiddenMobileMenus = this.uniqueNavElements?.uniqueGroups.filter(group =>
+            !group.fingerprint.view.mobile.visibility
+        ) || [];
+        
+        console.log(`Found ${hiddenMobileMenus.length} menus that aren't visible on mobile`);
+        
+        // Store the original viewport size for later restoration
+        const originalViewportSize = await this.page.viewportSize() || { width: 1280, height: 720 };
+        
+        // Test toggle elements on mobile
+        if (hiddenMobileMenus.length > 0) {
+            console.log(`\n=== TESTING TOGGLE ELEMENTS ON MOBILE ===`);
+            
+            // Switch to mobile viewport
+            await this.page.setViewportSize({ width: 375, height: 667 });
+            
+            // Loop through toggle elements
+            for (const toggle of toggleInfo.toggleDetails) {
+                const toggleSelector = toggle.selector;
+                
+                try {
+                    console.log(`Testing toggle element: ${toggleSelector}`);
+                    results.mobile.tested++;
+                    
+                    // Check if toggle is visible on mobile using stored information
+                    if (!toggle.fingerprint.views.mobile.visibility) {
+                        console.log(`Toggle element is not visible on mobile according to stored data, skipping`);
+                        continue;
+                    }
+                    
+                    // Try to locate the toggle element
+                    const toggleElement = this.page.locator(toggleSelector).first();
+                    
+                    // Focus the toggle element
+                    await toggleElement.focus();
+                    
+                    // Press Enter key
+                    await this.page.keyboard.press('Enter');
+                    
+                    // Wait a moment for any animations
+                    await this.page.waitForTimeout(500);
+                    
+                    // Check if any of the hidden menus became visible
+                    let menuBecameVisible = false;
+                    
+                    for (const menu of hiddenMobileMenus) {
+                        const menuSelector = `[data-menu-id="${menu.menuId}"]`;
+                        const menuElement = this.page.locator(menuSelector);
+                        
+                        // Check if menu is now visible
+                        const isMenuVisible = await menuElement.evaluate((el) => {
+                            const style = window.getComputedStyle(el);
+                            const display = style.display;
+                            const opacity = parseFloat(style.opacity);
+                            const isStyleVisible = (display !== 'none' && opacity > 0);
+                            const isElementVisible = el.checkVisibility?.() ?? true;
+                        
+                            return isStyleVisible && isElementVisible;
+                        });
+                        
+                        if (isMenuVisible) {
+                            console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
+                            menuBecameVisible = true;
+                            
+                            // Add to results
+                            results.mobile.successful++;
+                            results.mobile.details.push({
+                                toggleSelector,
+                                menuId: menu.menuId,
+                                success: true
+                            });
+                            
+                            // Press Escape to close the menu
+                            await this.page.keyboard.press('Escape');
+                            await this.page.waitForTimeout(300);
+    
+                            // Save which menu became visible in mobile viewport
+                            console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
+                            
+                            // Update the menu type to indicate it's toggle-based
+                            await menuElement.first().evaluate((el, hasDropdowns) => {
+                                // Update the menu type based on whether it has dropdowns
+                                const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
+                                el.setAttribute('data-menu-type', newType);
+                                
+                                // Also update the fingerprint directly in the DOM
+                                const menuId = el.getAttribute('data-menu-id');
+                                if (menuId) {
+                                    // Store the menu type in a data attribute for later retrieval
+                                    el.setAttribute('data-desktop-menu-type', newType);
+                                    el.setAttribute('data-mobile-menu-type', newType);
+                                }
+                                
+                                console.log(`Updated menu type to: ${newType}`);
+                            }, menu.fingerprint.hasDropdowns);
+                            
+                            // Update the fingerprint object in memory to match the DOM attribute
+                            // Note: Avoid hardcoded references or special cases - this test should be universal for any website
+                            const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
+                            console.log(`Updating menu ${menu.menuId} type to ${newType}`);
+                            menu.fingerprint.view.mobile.menuType = newType;
+                            
+                            // Run the full menu test for this newly visible menu
+                            console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
+                            
+                            // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
+                            await this.testSpecificMenu(menuSelector, 'mobile', toggleSelector, true);
+                            
+                            // Update the unique elements test results
+                            await this.findUniqueNavElements();
+                            
+                            break;
+                        }
+                    }
+                    
+                    if (!menuBecameVisible) {
+                        console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
+                        results.mobile.details.push({
+                            toggleSelector,
+                            success: false
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error testing toggle element ${toggleSelector} on mobile:`, error);
+                    results.mobile.details.push({
+                        toggleSelector,
+                        success: false,
+                        error: error.message
+                    });
+                }
+            }
+            
+            // Restore original viewport size
+            await this.page.setViewportSize({ width: originalViewportSize.width, height: originalViewportSize.height });
+        }
+        
+        // Report results
+        console.log(`\n=== TOGGLE ELEMENT TESTING RESULTS ===`);
+        console.log(`Desktop: ${results.desktop.successful}/${results.desktop.tested} toggle elements successfully revealed hidden menus`);
+        console.log(`Mobile: ${results.mobile.successful}/${results.mobile.tested} toggle elements successfully revealed hidden menus`);
+        
+        // Generate a comprehensive summary of toggle test results
+        console.log(`\n=== TOGGLE TEST SUMMARY ===`);
+        
+        if (results.desktop.successful > 0) {
+            console.log(`\nDesktop Toggle Results:`);
+            console.log(`  - Tested: ${results.desktop.tested}`);
+            console.log(`  - Successful: ${results.desktop.successful}`);
+            console.log(`  - Success Rate: ${Math.round((results.desktop.successful / results.desktop.tested) * 100)}%`);
+            
+            console.log(`\nSuccessful Desktop Toggles:`);
+            results.desktop.details.filter(detail => detail.success).forEach((detail, index) => {
+                console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
+            });
+        }
+        
+        if (results.mobile.successful > 0) {
+            console.log(`\nMobile Toggle Results:`);
+            console.log(`  - Tested: ${results.mobile.tested}`);
+            console.log(`  - Successful: ${results.mobile.successful}`);
+            console.log(`  - Success Rate: ${Math.round((results.mobile.successful / results.mobile.tested) * 100)}%`);
+            
+            console.log(`\nSuccessful Mobile Toggles:`);
+            results.mobile.details.filter(detail => detail.success).forEach((detail, index) => {
+                console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
+            });
+        }
+        
+        return results;
+    }
 }
 
 /**
@@ -1903,389 +2282,11 @@ export async function testMenus(page: Page, websiteUrl: string) {
 }
 
 /**
- * Test toggle elements for menus that aren't visible
+ * @deprecated Use MenuTester.testToggleElementsForHiddenMenus() instead
  */
 export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavInfo): Promise<any> {
-    console.log(`\n=== TESTING TOGGLE ELEMENTS FOR HIDDEN MENUS ===`);
-    
-    // Find toggle elements - use the filtered toggle elements
-    const toggleTester = new ToggleTester(page);
-    
-    // Extract menuIds from navInfo to filter toggle elements
-    const menuIds = navInfo.menuIds || [];
-    console.log(`Filtering toggle elements using menu IDs: ${menuIds.join(', ')}`);
-    
-    // Find toggle elements that are filtered based on menuIds
-    const toggleInfo = await toggleTester.findToggleElements(menuIds);
-
-    // Remove potential duplicates by creating a unique signature for each toggle
-    // and filtering out duplicates based on this signature
-    console.log(`\n=== REMOVING DUPLICATE TOGGLE ELEMENTS ===`);
-    
-    // Create a map to store unique toggles by their signature
-    const uniqueToggles = new Map<string, typeof toggleInfo.toggleDetails[0]>();
-    
-    // Process each toggle to identify and remove duplicates
-    toggleInfo.toggleDetails.forEach(toggle => {
-        // Create a unique signature based on key properties
-        // Using a combination of properties that would identify a unique toggle
-        const signature = [
-            // If it controls a menu, that's a strong identifier
-            toggle.fingerprint.ariaAttributes.ariaControlsValue,
-            // Include basic identifiers
-            toggle.fingerprint.id,
-            toggle.fingerprint.tagName,
-            // Include parent info to differentiate similar toggles in different containers
-            toggle.fingerprint.parentId,
-            toggle.fingerprint.parentClass,
-            // Include position info which can help differentiate similar toggles
-            JSON.stringify(toggle.fingerprint.views)
-        ].join('|');
-        
-        // Only add to uniqueToggles if this signature hasn't been seen before
-        if (!uniqueToggles.has(signature)) {
-            uniqueToggles.set(signature, toggle);
-        } else {
-            console.log(`Found duplicate toggle: ${toggle.selector}, skipping...`);
-        }
-    });
-    
-    // Update toggleInfo with deduplicated toggles
-    const originalCount = toggleInfo.total;
-    toggleInfo.toggleDetails = Array.from(uniqueToggles.values());
-    toggleInfo.total = toggleInfo.toggleDetails.length;
-    toggleInfo.toggleIds = toggleInfo.toggleDetails.map(t => t.fingerprint.toggleId);
-    
-    if (originalCount !== toggleInfo.total) {
-        console.log(`Removed ${originalCount - toggleInfo.total} duplicate toggle elements`);
-    } else {
-        console.log(`No duplicate toggle elements found`);
-    }
-    
-    console.log(`\n=== USING FILTERED TOGGLE ELEMENTS ===`);
-    console.log(`Testing only ${toggleInfo.total} filtered toggle elements`);
-    
-    // Log the filtered toggle elements
-    toggleInfo.toggleDetails.forEach((toggle, index) => {
-        console.log(`${index + 1}. Testing toggle: ${toggle.selector}`);
-    });
-    
-    // Define result types
-    interface ToggleTestDetail {
-        toggleSelector: string;
-        menuId?: string;
-        success: boolean;
-        error?: string;
-    }
-    
-    // Store results
-    const results = {
-        desktop: {
-            tested: 0,
-            successful: 0,
-            details: [] as ToggleTestDetail[]
-        },
-        mobile: {
-            tested: 0,
-            successful: 0,
-            details: [] as ToggleTestDetail[]
-        }
-    };
-    
-    // Get menus that aren't visible on desktop
-    const hiddenDesktopMenus = navInfo.uniqueGroups.filter(group =>
-        !group.fingerprint.view.desktop.visibility
-    );
-    
-    console.log(`Found ${hiddenDesktopMenus.length} menus that aren't visible on desktop`);
-    
-    // Test toggle elements on desktop
-    if (hiddenDesktopMenus.length > 0) {
-        console.log(`\n=== TESTING TOGGLE ELEMENTS ON DESKTOP ===`);
-        
-        // Ensure we're in desktop viewport
-        await page.setViewportSize({ width: 1280, height: 720 });
-        
-        // Loop through toggle elements
-        for (const toggle of toggleInfo.toggleDetails) {
-            const toggleSelector = toggle.selector;
-            
-            try {
-                console.log(`Testing toggle element: ${toggleSelector}`);
-                results.desktop.tested++;
-                
-                // Check if toggle is visible on desktop using stored information
-                if (!toggle.fingerprint.views.desktop.visibility) {
-                    console.log(`Toggle element is not visible on desktop according to stored data, skipping`);
-                    continue;
-                }
-                
-                // Try to locate the toggle element
-                const toggleElement = page.locator(toggleSelector).first();
-                
-                // Focus the toggle element
-                await toggleElement.focus();
-                
-                // Press Enter key
-                await page.keyboard.press('Enter');
-                
-                // Wait a moment for any animations
-                await page.waitForTimeout(500);
-                
-                // Check if any of the hidden menus became visible
-                let menuBecameVisible = false;
-                
-                for (const menu of hiddenDesktopMenus) {
-                    const menuSelector = `[data-menu-id="${menu.menuId}"]`;
-                    const menuElement = page.locator(menuSelector);
-                    
-                    // Check if menu is now visible
-                    const isMenuVisible = await isElementTrulyVisible(menuElement);
-                    
-                    if (isMenuVisible) {
-                        console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
-                        menuBecameVisible = true;
-                        
-                        // Add to results
-                        results.desktop.successful++;
-                        results.desktop.details.push({
-                            toggleSelector,
-                            menuId: menu.menuId,
-                            success: true
-                        });
-                        
-                        // Press Escape to close the menu
-                        await page.keyboard.press('Escape');
-                        await page.waitForTimeout(300);
-                        
-                        // Save which menu became visible in desktop viewport
-                        console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN DESKTOP VIEWPORT ===`);
-                        
-                        // Update the menu type to indicate it's toggle-based
-                        await menuElement.evaluate((el, hasDropdowns) => {
-                            // Update the menu type based on whether it has dropdowns
-                            const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
-                            el.setAttribute('data-menu-type', newType);
-                            
-                            // Also update the fingerprint directly in the DOM
-                            const menuId = el.getAttribute('data-menu-id');
-                            if (menuId) {
-                                // Store the menu type in a data attribute for later retrieval
-                                el.setAttribute('data-desktop-menu-type', newType);
-                                el.setAttribute('data-mobile-menu-type', newType);
-                            }
-                            
-                            console.log(`Updated menu type to: ${newType}`);
-                        }, menu.fingerprint.hasDropdowns);
-                        
-                        // Update the fingerprint object in memory to match the DOM attribute
-                        // Note: Avoid hardcoded references or special cases - this test should be universal for any website
-                        const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
-                        console.log(`Updating menu ${menu.menuId} type to ${newType}`);
-                        menu.fingerprint.view.desktop.menuType = newType;
-                        
-                        // Run the full menu test for this newly visible menu
-                        console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
-                        const menuTester = new MenuTester(page);
-                        // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
-                        await menuTester.testSpecificMenu(menuSelector, 'desktop', navInfo, toggleSelector, true);
-                        
-                        // Update the unique elements test results
-                        await menuTester.findUniqueNavElements();
-                        
-                        break;
-                    }
-                }
-                
-                if (!menuBecameVisible) {
-                    console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
-                    results.desktop.details.push({
-                        toggleSelector,
-                        success: false
-                    });
-                }
-            } catch (error) {
-                console.error(`Error testing toggle element ${toggleSelector} on desktop:`, error);
-                results.desktop.details.push({
-                    toggleSelector,
-                    success: false,
-                    error: error.message
-                });
-            }
-        }
-    }
-    
-    // Get menus that aren't visible on mobile
-    const hiddenMobileMenus = navInfo.uniqueGroups.filter(group =>
-        !group.fingerprint.view.mobile.visibility
-    );
-    
-    console.log(`Found ${hiddenMobileMenus.length} menus that aren't visible on mobile`);
-    
-    // Store the original viewport size for later restoration
-    const originalViewportSize = await page.viewportSize() || { width: 1280, height: 720 };
-    
-    // Test toggle elements on mobile
-    if (hiddenMobileMenus.length > 0) {
-        console.log(`\n=== TESTING TOGGLE ELEMENTS ON MOBILE ===`);
-        
-        // Switch to mobile viewport
-        await page.setViewportSize({ width: 375, height: 667 });
-        
-        // Loop through toggle elements
-        for (const toggle of toggleInfo.toggleDetails) {
-            const toggleSelector = toggle.selector;
-            
-            try {
-                console.log(`Testing toggle element: ${toggleSelector}`);
-                results.mobile.tested++;
-                
-                // Check if toggle is visible on mobile using stored information
-                if (!toggle.fingerprint.views.mobile.visibility) {
-                    console.log(`Toggle element is not visible on mobile according to stored data, skipping`);
-                    continue;
-                }
-                
-                // Try to locate the toggle element
-                const toggleElement = page.locator(toggleSelector).first();
-                
-                // Focus the toggle element
-                await toggleElement.focus();
-                
-                // Press Enter key
-                await page.keyboard.press('Enter');
-                
-                // Wait a moment for any animations
-                await page.waitForTimeout(500);
-                
-                // Check if any of the hidden menus became visible
-                let menuBecameVisible = false;
-                
-                for (const menu of hiddenMobileMenus) {
-                    const menuSelector = `[data-menu-id="${menu.menuId}"]`;
-                    const menuElement = page.locator(menuSelector);
-                    
-                    // Check if menu is now visible
-                    const isMenuVisible = await menuElement.evaluate((el) => {
-                        const style = window.getComputedStyle(el);
-                        const display = style.display;
-                        const opacity = parseFloat(style.opacity);
-                        const isStyleVisible = (display !== 'none' && opacity > 0);
-                        const isElementVisible = el.checkVisibility?.() ?? true;
-                    
-                        return isStyleVisible && isElementVisible;
-                    });
-                    
-                    if (isMenuVisible) {
-                        console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
-                        menuBecameVisible = true;
-                        
-                        // Add to results
-                        results.mobile.successful++;
-                        results.mobile.details.push({
-                            toggleSelector,
-                            menuId: menu.menuId,
-                            success: true
-                        });
-                        
-                        // Press Escape to close the menu
-                        await page.keyboard.press('Escape');
-                        await page.waitForTimeout(300);
-
-                        // Save which menu became visible in mobile viewport
-                        console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
-                        
-                        // Update the menu type to indicate it's toggle-based
-                        await menuElement.first().evaluate((el, hasDropdowns) => {
-                            // Update the menu type based on whether it has dropdowns
-                            const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
-                            el.setAttribute('data-menu-type', newType);
-                            
-                            // Also update the fingerprint directly in the DOM
-                            const menuId = el.getAttribute('data-menu-id');
-                            if (menuId) {
-                                // Store the menu type in a data attribute for later retrieval
-                                el.setAttribute('data-desktop-menu-type', newType);
-                                el.setAttribute('data-mobile-menu-type', newType);
-                            }
-                            
-                            console.log(`Updated menu type to: ${newType}`);
-                        }, menu.fingerprint.hasDropdowns);
-                        
-                        // Update the fingerprint object in memory to match the DOM attribute
-                        // Note: Avoid hardcoded references or special cases - this test should be universal for any website
-                        const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
-                        console.log(`Updating menu ${menu.menuId} type to ${newType}`);
-                        menu.fingerprint.view.mobile.menuType = newType;
-                        
-                        // Run the full menu test for this newly visible menu
-                        console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
-                        const menuTester = new MenuTester(page);
-
-                        // Pass the navInfo and toggleSelector to avoid redundant processing and ensure menu is open
-                        await menuTester.testSpecificMenu(menuSelector, 'mobile', navInfo, toggleSelector, true);
-                        
-                        // Update the unique elements test results
-                        await menuTester.findUniqueNavElements();
-                        
-                        break;
-                    }
-                }
-                
-                if (!menuBecameVisible) {
-                    console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
-                    results.mobile.details.push({
-                        toggleSelector,
-                        success: false
-                    });
-                }
-            } catch (error) {
-                console.error(`Error testing toggle element ${toggleSelector} on mobile:`, error);
-                results.mobile.details.push({
-                    toggleSelector,
-                    success: false,
-                    error: error.message
-                });
-            }
-        }
-        
-        // Restore original viewport size
-        await page.setViewportSize({ width: originalViewportSize.width, height: originalViewportSize.height });
-    }
-    
-    // Report results
-    console.log(`\n=== TOGGLE ELEMENT TESTING RESULTS ===`);
-    console.log(`Desktop: ${results.desktop.successful}/${results.desktop.tested} toggle elements successfully revealed hidden menus`);
-    console.log(`Mobile: ${results.mobile.successful}/${results.mobile.tested} toggle elements successfully revealed hidden menus`);
-    
-    // Generate a comprehensive summary of toggle test results
-    console.log(`\n=== TOGGLE TEST SUMMARY ===`);
-    
-    if (results.desktop.successful > 0) {
-        console.log(`\nDesktop Toggle Results:`);
-        console.log(`  - Tested: ${results.desktop.tested}`);
-        console.log(`  - Successful: ${results.desktop.successful}`);
-        console.log(`  - Success Rate: ${Math.round((results.desktop.successful / results.desktop.tested) * 100)}%`);
-        
-        console.log(`\nSuccessful Desktop Toggles:`);
-        results.desktop.details.filter(detail => detail.success).forEach((detail, index) => {
-            console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
-        });
-    }
-    
-    if (results.mobile.successful > 0) {
-        console.log(`\nMobile Toggle Results:`);
-        console.log(`  - Tested: ${results.mobile.tested}`);
-        console.log(`  - Successful: ${results.mobile.successful}`);
-        console.log(`  - Success Rate: ${Math.round((results.mobile.successful / results.mobile.tested) * 100)}%`);
-        
-        console.log(`\nSuccessful Mobile Toggles:`);
-        results.mobile.details.filter(detail => detail.success).forEach((detail, index) => {
-            console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
-        });
-    }
-    
-    return results;
+    const menuTester = new MenuTester(page);
+    return await menuTester.testToggleElementsForHiddenMenus(navInfo);
 }
 
     
