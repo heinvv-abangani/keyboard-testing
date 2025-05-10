@@ -1278,20 +1278,7 @@ export class MenuTester {
                     const toggleSelector = menuGroup.fingerprint.toggleDetails.toggleSelector;
                     console.log(`Using stored toggle selector from this.menuItems: ${toggleSelector}`);
                     toggleButton = await page.locator(toggleSelector).first();
-                    
-                    // Check if the toggle button exists
-                    if (await toggleButton.count() === 0) {
-                        console.log(`Toggle selector not found, falling back to generic selector`);
-                        toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
-                    }
-                } else {
-                    console.log(`No toggle details found in this.menuItems for menu ID: ${menuId}`);
-                    toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
                 }
-            } else {
-                // If we can't find the menu ID or this.menuItems is null, use the generic selector
-                console.log(`Could not find menu ID or this.menuItems is null, using generic selector`);
-                toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
             }
             
             if (await toggleButton.count() > 0) {
