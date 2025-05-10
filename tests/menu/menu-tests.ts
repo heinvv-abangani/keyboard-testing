@@ -1256,7 +1256,35 @@ export class MenuTester {
             console.log(`Dropdown is not open. Attempting to open it...`);
             
             // Try to find a dropdown toggle button or link
-            const toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
+            let toggleButton;
+            
+            // Try to find the menu ID to look up in this.menuItems
+            const menuId = await menu.getAttribute('data-menu-id');
+            
+            if (menuId && this.menuItems) {
+                // Find the menu in this.menuItems
+                const menuGroup = this.menuItems.uniqueGroups.find(group => group.menuId === menuId);
+                
+                // If we have toggle details for this menu, use that selector first
+                if (menuGroup?.fingerprint?.toggleDetails?.toggleSelector) {
+                    const toggleSelector = menuGroup.fingerprint.toggleDetails.toggleSelector;
+                    console.log(`Using stored toggle selector from this.menuItems: ${toggleSelector}`);
+                    toggleButton = await page.locator(toggleSelector).first();
+                    
+                    // Check if the toggle button exists
+                    if (await toggleButton.count() === 0) {
+                        console.log(`Toggle selector not found, falling back to generic selector`);
+                        toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
+                    }
+                } else {
+                    console.log(`No toggle details found in this.menuItems for menu ID: ${menuId}`);
+                    toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
+                }
+            } else {
+                // If we can't find the menu ID or this.menuItems is null, use the generic selector
+                console.log(`Could not find menu ID or this.menuItems is null, using generic selector`);
+                toggleButton = await menuItem.locator('button, [aria-expanded], [aria-haspopup], a').first();
+            }
             
             if (await toggleButton.count() > 0) {
                 // Click the toggle to open the dropdown
@@ -1455,7 +1483,6 @@ export class MenuTester {
     private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
         console.log( 'start with test menu Dropdown' );
         console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
-        
         
         const hasListStructure = await menu.locator('li:has(ul)').count() > 0;
         const selector = hasListStructure ? 'li:has(ul)' : '[aria-expanded], [aria-haspopup="true"]';
