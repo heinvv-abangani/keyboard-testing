@@ -32,6 +32,16 @@ export class MenuTester {
     }
     
     /**
+     * Get a locator for a menu based on its ID
+     * @param menuId The ID of the menu
+     * @returns A locator for the menu
+     */
+    private getMenuLocator(menuId: string): Locator {
+        const menuSelector = `[data-menu-id="${menuId}"]`;
+        return this.page.locator(menuSelector).first();
+    }
+    
+    /**
      * Initialize nav elements in the browser context
      * Returns a function to be used with page.evaluate
      */
@@ -871,7 +881,7 @@ export class MenuTester {
                 await this.testVisibleMenuItems(menu, fingerprint, desktopResults, 'desktop');
                 
                 // Test menu dropdowns
-                await this.testMenuDropdown(menu, fingerprint, desktopResults, 'desktop');
+                await this.testMenuDropdown(group.menuId, fingerprint, desktopResults, 'desktop');
     
                 console.log('Desktop: Number of links: ', linkCount);
                 console.log('Desktop: Number of visible links: ', desktopResults.visibleMenuItems);
@@ -919,7 +929,7 @@ export class MenuTester {
             await this.testVisibleMenuItems(menu, fingerprint, mobileResults, 'mobile');
             
             // Test menu dropdowns
-            await this.testMenuDropdown(menu, fingerprint, mobileResults, 'mobile');
+            await this.testMenuDropdown(group.menuId, fingerprint, mobileResults, 'mobile');
             
             console.log('Mobile: Number of links: ', linkCount);
             console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
@@ -1166,7 +1176,7 @@ export class MenuTester {
      * Test focusable dropdown items
      * Continues from the current focused element and tests if all visible dropdown items are focusable
      */
-    private async testFocusableDropdownItems(page: Page, menu: Locator, menuItem: Locator, results: any, viewport: 'desktop' | 'mobile' = 'desktop'): Promise<number> {
+    private async testFocusableDropdownItems(page: Page, menuId: string, menuItem: Locator, results: any, viewport: 'desktop' | 'mobile' = 'desktop'): Promise<number> {
         // First, ensure we focus on the correct menu item before pausing
         // Find the first focusable element within the menuItem
         const focusableElement = menuItem.locator('a, button, [tabindex]:not([tabindex="-1"])').first();
@@ -1258,10 +1268,8 @@ export class MenuTester {
             // Try to find a dropdown toggle button or link
             let toggleButton;
             
-            // Try to find the menu ID to look up in this.menuItems
-            const menuId = await menu.getAttribute('data-menu-id');
-            
-            if (menuId && this.menuItems) {
+            // Use the menuId parameter to look up in this.menuItems
+            if (this.menuItems) {
                 // Find the menu in this.menuItems
                 const menuGroup = this.menuItems.uniqueGroups.find(group => group.menuId === menuId);
                 
@@ -1316,8 +1324,8 @@ export class MenuTester {
             }
         }
         
-        // Get the menu ID for checking if we're still in the menu
-        const menuId = await menu.first().evaluate(el => el.getAttribute('data-menu-id'));
+        // We already have the menu ID from the parameter
+        // No need to get it again
         
         // Tab through all visible dropdown items
         let focusableCount = 0;
@@ -1480,7 +1488,9 @@ export class MenuTester {
     /**
      * Test menu dropdowns for keyboard and mouse accessibility
      */
-    private async testMenuDropdown(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+    private async testMenuDropdown(menuId: string, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+        // Get the menu locator from the menuId
+        const menu = this.getMenuLocator(menuId);
         console.log( 'start with test menu Dropdown' );
         console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
         
@@ -1561,7 +1571,7 @@ export class MenuTester {
                     }
                     
                     // Test focusable dropdown items
-                    results = await this.testFocusableDropdownItems(this.page, menu, dropdownItem, results, viewport);
+                    results = await this.testFocusableDropdownItems(this.page, menuId, dropdownItem, results, viewport);
                 } else {
                     // Test mouse interactions
                     const mouseResult = await testMouseInteractions(this.page, dropdownItem);
@@ -1716,7 +1726,7 @@ export class MenuTester {
         await this.testVisibleMenuItems(menu.first(), fingerprint, results, 'desktop', openedWithToggle);
         
         // Test menu dropdowns
-        await this.testMenuDropdown(menu.first(), fingerprint, results, 'desktop', openedWithToggle);
+        await this.testMenuDropdown(menuId, fingerprint, results, 'desktop', openedWithToggle);
         
         console.log('Desktop: Number of links: ', results.totalMenuItems);
         console.log('Desktop: Number of visible links: ', results.visibleMenuItems);
@@ -1744,7 +1754,7 @@ export class MenuTester {
         await this.testVisibleMenuItems(menu.first(), fingerprint, mobileResults, 'mobile', openedWithToggle);
         
         // Test menu dropdowns in mobile
-        await this.testMenuDropdown(menu.first(), fingerprint, mobileResults, 'mobile', openedWithToggle);
+        await this.testMenuDropdown(menuId, fingerprint, mobileResults, 'mobile', openedWithToggle);
         
         console.log('Mobile: Number of links: ', mobileResults.totalMenuItems);
         console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
