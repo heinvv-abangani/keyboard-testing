@@ -1226,9 +1226,6 @@ export class MenuTester {
             // If no focusable child element, try to focus the menuItem itself
             await menuItem.focus();
         }
-        
-        // HVV: The test start to fail when remove the pause.
-        await page.pause();
 
         console.log( 'start testFocusableDropdownItems' );
         console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
@@ -1299,10 +1296,6 @@ export class MenuTester {
         });
         
         if (!isDropdownOpen) {
-
-            // HVV: The test start to fail when remove the pause.
-            await page.pause();
-    
             console.log(`Dropdown is not open. Attempting to open it...`);
             
             // Get menu fingerprint using the helper function
@@ -1592,6 +1585,8 @@ export class MenuTester {
                     // The testDropdownKeyboardAccessibility method might have closed the dropdown
                     const expandedElement = await dropdownItem.locator('[aria-expanded]').first();
                     const isExpanded = await expandedElement.evaluate(el => el.getAttribute('aria-expanded') === 'true');
+
+                    console.log( 'isExpanded', isExpanded );
                     
                     if (!isExpanded) {
                         console.log(`Dropdown is not expanded. Expanding it before testing focusable items...`);

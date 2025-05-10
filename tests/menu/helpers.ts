@@ -155,6 +155,8 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
     opensOnSpace: boolean;
     closesOnEscape: boolean;
 }> {
+    await page.waitForTimeout( 300 );
+
     console.log(`\n=== TESTING DROPDOWN KEYBOARD ACCESSIBILITY FOR "${title}" ===`);
     
     // Default return value
@@ -245,6 +247,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
             } else {
                 // For non-links, we can safely press Enter
                 await page.keyboard.press('Enter');
+                await page.waitForTimeout( 300 );
             }
         }
         
@@ -256,6 +259,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
             
             // Press Escape key to collapse the dropdown
             await page.keyboard.press('Escape');
+            await page.waitForTimeout( 300 );
             
             // Check if aria-expanded is now false
             const isCollapsed = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'false');
@@ -263,6 +267,8 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
             if (isCollapsed) {
                 console.log(`✅ Dropdown collapsed with Escape key`);
                 await page.keyboard.press('Enter');
+                await page.waitForTimeout( 300 );
+
                 return {
                     isAccessible: true,
                     opensOnEnter: true,
@@ -296,6 +302,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
             } else {
                 // For non-links, we can safely press Space
                 await page.keyboard.press('Space');
+                await page.waitForTimeout( 300 );
             }
             
             // Check if aria-expanded is now true
@@ -306,6 +313,7 @@ export async function testDropdownKeyboardAccessibility(page: Page, menu: Locato
                 
                 // Press Escape key to collapse the dropdown
                 await page.keyboard.press('Escape');
+                await page.waitForTimeout( 300 );
                 
                 // Check if aria-expanded is now false
                 const isCollapsed = await expandedLocator.evaluate(el => el.getAttribute('aria-expanded') === 'false');
@@ -584,6 +592,7 @@ export async function testAriaControlsDropdowns(page: Page, menuItem: Locator): 
     } else {
         // For non-links, we can safely press Enter
         await page.keyboard.press('Enter');
+        await page.waitForTimeout( 300 );
     }
     
     // Check if visibility changed
@@ -620,6 +629,7 @@ export async function testAriaControlsDropdowns(page: Page, menuItem: Locator): 
     } else {
         // For non-links, we can safely press Space
         await page.keyboard.press('Space');
+        await page.waitForTimeout( 300 );
     }
     
     // Check if visibility changed
