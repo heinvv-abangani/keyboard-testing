@@ -22,7 +22,7 @@ import {
  */
 export class MenuTester {
     // Store navigation elements data
-    uniqueNavElements: NavInfo | null = null;
+    menuItems: NavInfo | null = null;
     
     // Store the page instance
     private page: Page;
@@ -631,7 +631,7 @@ export class MenuTester {
         }
         
         // Store the results
-        this.uniqueNavElements = navInfo;
+        this.menuItems = navInfo;
         
         return navInfo;
     }
@@ -642,8 +642,8 @@ export class MenuTester {
     async checkForHiddenMenus(menus?: Locator): Promise<any[]> {
         console.log("\n=== CHECKING FOR HIDDEN MENUS ===");
         
-        // Check if uniqueNavElements exists
-        if (!this.uniqueNavElements) {
+        // Check if menuItems exists
+        if (!this.menuItems) {
             console.log("No nav elements found. Run findUniqueNavElements() first.");
             return [];
         }
@@ -653,7 +653,7 @@ export class MenuTester {
         const hiddenOnMobile: any[] = [];
         
         // Loop through unique nav groups
-        for (const group of this.uniqueNavElements.uniqueGroups) {
+        for (const group of this.menuItems.uniqueGroups) {
             const { fingerprint, menuId } = group;
             
             // Check desktop visibility
@@ -721,7 +721,7 @@ export class MenuTester {
         let toggleInfo: ToggleInfo | null = null;
         if (hiddenOnDesktop.length > 0 || hiddenOnMobile.length > 0) {
             console.log("\n=== TESTING TOGGLE ELEMENTS FOR HIDDEN MENUS ===");
-            toggleInfo = await testToggles(this.page, this.uniqueNavElements);
+            toggleInfo = await testToggles(this.page, this.menuItems);
         }
         
         // Return the hidden menus and toggle info
@@ -770,13 +770,13 @@ export class MenuTester {
     async iterateMenus(): Promise<any> {
         console.log("\n=== ITERATING THROUGH MENUS ===");
         
-        // Check if uniqueNavElements exists
-        if (!this.uniqueNavElements) {
+        // Check if menuItems exists
+        if (!this.menuItems) {
             console.log("No nav elements found. Run findUniqueNavElements() first.");
             return {};
         }
         
-        const count = this.uniqueNavElements.uniqueGroups.length;
+        const count = this.menuItems.uniqueGroups.length;
         console.log(`\n=== FOUND ${count} UNIQUE MENU ELEMENTS ===`);
         
         // Store original viewport size to restore later
@@ -823,7 +823,7 @@ export class MenuTester {
         
         for (let i = 0; i < count; i++) {
             // Get the menu group and fingerprint
-            const group = this.uniqueNavElements.uniqueGroups[i];
+            const group = this.menuItems.uniqueGroups[i];
             const fingerprint = group.fingerprint;
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
@@ -892,7 +892,7 @@ export class MenuTester {
         
         for (let i = 0; i < count; i++) {
             // Get the menu group and fingerprint
-            const group = this.uniqueNavElements.uniqueGroups[i];
+            const group = this.menuItems.uniqueGroups[i];
             const fingerprint = group.fingerprint;
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
@@ -941,15 +941,15 @@ export class MenuTester {
         console.log(`2.4.5 Multiple Ways (Level AA): ${combinedResults.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         console.log(`3.2.3 Consistent Navigation (Level AA): ${combinedResults.menusWithAriaAttributes > 0 ? '✅ PASS' : '❌ FAIL'}`);
         
-        // Update this.uniqueNavElements with the modified fingerprints
-        if (this.uniqueNavElements) {
+        // Update this.menuItems with the modified fingerprints
+        if (this.menuItems) {
             // The fingerprints have already been updated by reference, but we can explicitly log this
             console.log("\n=== UPDATED NAV FINGERPRINT DATA ===");
             console.log("Updated NavFingerprint data with interaction behavior information");
             
             // Log some of the updated properties for verification
             for (let i = 0; i < count; i++) {
-                const group = this.uniqueNavElements.uniqueGroups[i];
+                const group = this.menuItems.uniqueGroups[i];
                 const fingerprint = group.fingerprint;
                 
                 console.log(`\nMenu ${i + 1} (${fingerprint.name}) updated properties:`);
@@ -1625,14 +1625,14 @@ export class MenuTester {
         
         console.log(`Testing menu with ID: ${menuId}`);
         
-        // Find the corresponding menu in uniqueNavElements or add it if not found
-        let menuGroup = this.uniqueNavElements?.uniqueGroups.find(
+        // Find the corresponding menu in menuItems or add it if not found
+        let menuGroup = this.menuItems?.uniqueGroups.find(
             group => group.menuId === menuId
         );
         
         if (!menuGroup) {
-            console.log(`Menu not found in uniqueNavElements. Running full menu tests...`);
-            // Run the full menu tests which will update uniqueNavElements
+            console.log(`Menu not found in menuItems. Running full menu tests...`);
+            // Run the full menu tests which will update menuItems
             return await this.iterateMenus();
         }
         
@@ -1811,8 +1811,8 @@ export class MenuTester {
         // Find unique nav elements
         const navInfo = await this.findUniqueNavElements();
 
-        // Iterate through menus using the uniqueNavElements data
-        // The navInfo is already stored in this.uniqueNavElements, so no need to pass it explicitly
+        // Iterate through menus using the menuItems data
+        // The navInfo is already stored in this.menuItems, so no need to pass it explicitly
         const menuResults = await this.iterateMenus();
         
         // Check for hidden menus
@@ -1827,8 +1827,8 @@ export class MenuTester {
         // List all menus and their results
         console.log(`\nAll Menus Tested:`);
         
-        if (this.uniqueNavElements) {
-            const allMenus = this.uniqueNavElements.uniqueGroups;
+        if (this.menuItems) {
+            const allMenus = this.menuItems.uniqueGroups;
             
             allMenus.forEach((menu, index) => {
                 const fingerprint = menu.fingerprint;
@@ -1878,7 +1878,7 @@ export class MenuTester {
         
         // Return the results
         return {
-            uniqueNavInfo: this.uniqueNavElements,
+            uniqueNavInfo: this.menuItems,
             hiddenMenus,
             menuResults,
             toggleResults
@@ -1887,7 +1887,6 @@ export class MenuTester {
     
     /**
      * Test toggle elements for menus that aren't visible
-     * @param navInfo Navigation information
      * @returns Test results
      */
     async testToggleElementsForHiddenMenus(): Promise<any> {
@@ -1897,7 +1896,7 @@ export class MenuTester {
         const toggleTester = new ToggleTester(this.page);
         
         // Extract menuIds from navInfo to filter toggle elements
-        const menuIds = this.uniqueNavElements?.menuIds || [];
+        const menuIds = this.menuItems?.menuIds || [];
         console.log(`Filtering toggle elements using menu IDs: ${menuIds.join(', ')}`);
         
         // Find toggle elements that are filtered based on menuIds
@@ -1978,7 +1977,7 @@ export class MenuTester {
         };
         
         // Get menus that aren't visible on desktop
-        const hiddenDesktopMenus = this.uniqueNavElements?.uniqueGroups.filter(group =>
+        const hiddenDesktopMenus = this.menuItems?.uniqueGroups.filter(group =>
             !group.fingerprint.view.desktop.visibility
         ) || [];
         
@@ -2101,7 +2100,7 @@ export class MenuTester {
         }
         
         // Get menus that aren't visible on mobile
-        const hiddenMobileMenus = this.uniqueNavElements?.uniqueGroups.filter(group =>
+        const hiddenMobileMenus = this.menuItems?.uniqueGroups.filter(group =>
             !group.fingerprint.view.mobile.visibility
         ) || [];
         
@@ -2284,9 +2283,9 @@ export async function testMenus(page: Page, websiteUrl: string) {
 /**
  * @deprecated Use MenuTester.testToggleElementsForHiddenMenus() instead
  */
-export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavInfo): Promise<any> {
+export async function testToggleElementsForHiddenMenus(page: Page): Promise<any> {
     const menuTester = new MenuTester(page);
-    return await menuTester.testToggleElementsForHiddenMenus(navInfo);
+    return await menuTester.testToggleElementsForHiddenMenus();
 }
 
     
