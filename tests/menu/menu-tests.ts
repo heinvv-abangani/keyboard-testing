@@ -2,7 +2,7 @@ import { test, Page, Locator } from "@playwright/test";
 import { isElementTrulyVisible } from '../helpers/general';
 import { goToUrl, detectAndClosePopup } from "../helpers/general";
 import { getConfigByUrl } from "../config";
-import { NavInfo, NavFingerprint, MenuType, MenuView } from "./menu-types";
+import { NavInfo, NavFingerprint, MenuType, MenuView, NavGroup } from "./menu-types";
 import { ToggleInfo } from "./toggle-types";
 import { ToggleTester, testToggles } from "./toggle";
 import {
@@ -39,6 +39,20 @@ export class MenuTester {
     private getMenuLocator(menuId: string): Locator {
         const menuSelector = `[data-menu-id="${menuId}"]`;
         return this.page.locator(menuSelector).first();
+    }
+    
+    /**
+     * Get menu fingerprint from this.menuItems based on menuId
+     * @param menuId The ID of the menu
+     * @returns The menu group or undefined if not found
+     */
+    private getMenuFingerprint(menuId: string): NavGroup | undefined {
+        if (!this.menuItems) {
+            return undefined;
+        }
+        
+        // Find the menu in this.menuItems
+        return this.menuItems.uniqueGroups.find(group => group.menuId === menuId);
     }
     
     /**
@@ -1268,17 +1282,14 @@ export class MenuTester {
             // Try to find a dropdown toggle button or link
             let toggleButton;
             
-            // Use the menuId parameter to look up in this.menuItems
-            if (this.menuItems) {
-                // Find the menu in this.menuItems
-                const menuGroup = this.menuItems.uniqueGroups.find(group => group.menuId === menuId);
-                
-                // If we have toggle details for this menu, use that selector first
-                if (menuGroup?.fingerprint?.toggleDetails?.toggleSelector) {
-                    const toggleSelector = menuGroup.fingerprint.toggleDetails.toggleSelector;
-                    console.log(`Using stored toggle selector from this.menuItems: ${toggleSelector}`);
-                    toggleButton = await page.locator(toggleSelector).first();
-                }
+            // Get menu fingerprint using the helper function
+            const menuGroup = this.getMenuFingerprint(menuId);
+            
+            // If we have toggle details for this menu, use that selector first
+            if (menuGroup?.fingerprint?.toggleDetails?.toggleSelector) {
+                const toggleSelector = menuGroup.fingerprint.toggleDetails.toggleSelector;
+                console.log(`Using stored toggle selector from this.menuItems: ${toggleSelector}`);
+                toggleButton = await page.locator(toggleSelector).first();
             }
             
             if (await toggleButton.count() > 0) {
@@ -1650,9 +1661,7 @@ export class MenuTester {
         console.log(`Testing menu with ID: ${menuId}`);
         
         // Find the corresponding menu in menuItems or add it if not found
-        let menuGroup = this.menuItems?.uniqueGroups.find(
-            group => group.menuId === menuId
-        );
+        let menuGroup = this.getMenuFingerprint(menuId);
         
         if (!menuGroup) {
             console.log(`Menu not found in menuItems. Running full menu tests...`);
@@ -2081,7 +2090,7 @@ export class MenuTester {
                             console.log(`Success: ${menu.fingerprint.toggleDetails.success}`);
                             
                             // Verify the toggle details are in this.menuItems
-                            const menuInItems = this.menuItems?.uniqueGroups.find(g => g.menuId === menu.menuId);
+                            const menuInItems = this.getMenuFingerprint(menu.menuId);
                             if (menuInItems && menuInItems.fingerprint.toggleDetails) {
                                 console.log(`\n=== VERIFIED TOGGLE DETAILS IN this.menuItems FOR MENU ${menu.menuId} ===`);
                                 console.log(`Toggle Selector in this.menuItems: ${menuInItems.fingerprint.toggleDetails.toggleSelector}`);
@@ -2235,7 +2244,7 @@ export class MenuTester {
                             console.log(`Success: ${menu.fingerprint.toggleDetails.success}`);
                             
                             // Verify the toggle details are in this.menuItems
-                            const menuInItems = this.menuItems?.uniqueGroups.find(g => g.menuId === menu.menuId);
+                            const menuInItems = this.getMenuFingerprint(menu.menuId);
                             if (menuInItems && menuInItems.fingerprint.toggleDetails) {
                                 console.log(`\n=== VERIFIED TOGGLE DETAILS IN this.menuItems FOR MENU ${menu.menuId} (MOBILE) ===`);
                                 console.log(`Toggle Selector in this.menuItems: ${menuInItems.fingerprint.toggleDetails.toggleSelector}`);
