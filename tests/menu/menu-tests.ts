@@ -56,6 +56,20 @@ export class MenuTester {
     }
     
     /**
+     * Get menu toggle selector from this.menuItems based on menuId
+     * @param menuId The ID of the menu
+     * @returns The toggle selector or undefined if not found
+     */
+    private getMenuToggleSelector(menuId: string): string | undefined {
+        const menuGroup = this.getMenuFingerprint(menuId);
+        if (!menuGroup?.fingerprint?.toggleDetails?.toggleSelector) {
+            return undefined;
+        }
+        
+        return menuGroup.fingerprint.toggleDetails.toggleSelector;
+    }
+    
+    /**
      * Initialize nav elements in the browser context
      * Returns a function to be used with page.evaluate
      */
@@ -892,10 +906,10 @@ export class MenuTester {
                 desktopResults.keyboardFocusableItems = 0;
                 desktopResults.visibleMenuItems = 0;
     
-                await this.testVisibleMenuItems(menu, fingerprint, desktopResults, 'desktop');
+                await this.testVisibleMenuItems(group.menuId, desktopResults, 'desktop');
                 
                 // Test menu dropdowns
-                await this.testMenuDropdown(group.menuId, fingerprint, desktopResults, 'desktop');
+                await this.testMenuDropdown(group.menuId, desktopResults, 'desktop');
     
                 console.log('Desktop: Number of links: ', linkCount);
                 console.log('Desktop: Number of visible links: ', desktopResults.visibleMenuItems);
@@ -940,10 +954,10 @@ export class MenuTester {
             mobileResults.keyboardFocusableItems = 0;
             mobileResults.visibleMenuItems = 0;
             
-            await this.testVisibleMenuItems(menu, fingerprint, mobileResults, 'mobile');
+            await this.testVisibleMenuItems(group.menuId, mobileResults, 'mobile');
             
             // Test menu dropdowns
-            await this.testMenuDropdown(group.menuId, fingerprint, mobileResults, 'mobile');
+            await this.testMenuDropdown(group.menuId, mobileResults, 'mobile');
             
             console.log('Mobile: Number of links: ', linkCount);
             console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
@@ -1009,7 +1023,19 @@ export class MenuTester {
         return combinedResults;
     }
 
-    private async testVisibleMenuItems(menu: Locator, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+    private async testVisibleMenuItems(menuId: string, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+        // Get the menu locator from the menuId
+        const menu = this.getMenuLocator(menuId);
+        
+        // Get the menu fingerprint
+        const menuGroup = this.getMenuFingerprint(menuId);
+        if (!menuGroup) {
+            console.log(`Menu with ID ${menuId} not found in menuItems. Skipping visible menu items test.`);
+            return;
+        }
+        
+        const fingerprint = menuGroup.fingerprint;
+        
         // Generate a unique visit ID to track elements we've already focused
         const visitId = Math.random().toString(36).substring(2, 32);
         console.log(`Generated visit ID: ${visitId}`);
@@ -1058,7 +1084,7 @@ export class MenuTester {
         await firstVisibleLink.focus();
         
         // Get the menu ID for checking if we're still in the menu
-        const menuId = fingerprint.menuId;
+        const menuIdForChecking = menuId;
         
         // Tab through all visible menu items
         let focusableCount = 0;
@@ -1137,7 +1163,7 @@ export class MenuTester {
             }
             
             // Check if the focused element is in a different menu
-            if (focusedElement.menuId !== menuId) {
+            if (focusedElement.menuId !== menuIdForChecking) {
                 console.log(`Focus moved to a different menu with ID: ${focusedElement.menuId}`);
                 isInsideMenu = false;
                 continue;
@@ -1279,17 +1305,14 @@ export class MenuTester {
     
             console.log(`Dropdown is not open. Attempting to open it...`);
             
-            // Try to find a dropdown toggle button or link
-            let toggleButton;
-            
             // Get menu fingerprint using the helper function
             const menuGroup = this.getMenuFingerprint(menuId);
-            
-            // If we have toggle details for this menu, use that selector first
-            if (menuGroup?.fingerprint?.toggleDetails?.toggleSelector) {
-                const toggleSelector = menuGroup.fingerprint.toggleDetails.toggleSelector;
-                console.log(`Using stored toggle selector from this.menuItems: ${toggleSelector}`);
-                toggleButton = await page.locator(toggleSelector).first();
+
+            let toggleButton;
+            const toggleSelector = this.getMenuToggleSelector( menuId );
+
+            if ( toggleSelector ) {
+                toggleButton = page.locator(toggleSelector).first();
             }
             
             if (await toggleButton.count() > 0) {
@@ -1486,9 +1509,18 @@ export class MenuTester {
     /**
      * Test menu dropdowns for keyboard and mouse accessibility
      */
-    private async testMenuDropdown(menuId: string, fingerprint: NavFingerprint, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
+    private async testMenuDropdown(menuId: string, results: any, viewport: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<void> {
         // Get the menu locator from the menuId
         const menu = this.getMenuLocator(menuId);
+        
+        // Get the menu fingerprint
+        const menuGroup = this.getMenuFingerprint(menuId);
+        if (!menuGroup) {
+            console.log(`Menu with ID ${menuId} not found in menuItems. Skipping dropdown test.`);
+            return;
+        }
+        
+        const fingerprint = menuGroup.fingerprint;
         console.log( 'start with test menu Dropdown' );
         console.log( 'focusable count', results?.mobileKeyboardFocusableItems );
         
@@ -1601,15 +1633,26 @@ export class MenuTester {
      * Test a specific menu that has become visible (e.g., after toggling)
      * This method runs the same tests as iterateMenus() but for a specific menu
      */
-    async testSpecificMenu(menuSelector: string, viewportToTest?: 'desktop' | 'mobile', toggleSelector?: string, openedWithToggle: boolean = false): Promise<any> {
-        console.log(`\n=== TESTING SPECIFIC MENU: ${menuSelector} (Viewport: ${viewportToTest || 'both'}) ===`);
+    async testSpecificMenu(menuId: string, viewportToTest?: 'desktop' | 'mobile', openedWithToggle: boolean = false): Promise<any> {
+        console.log(`\n=== TESTING SPECIFIC MENU: ${menuId} (Viewport: ${viewportToTest || 'both'}) ===`);
+        
+        // Get the menu locator from the menuId
+        const menu = this.getMenuLocator(menuId);
+        const count = await menu.count();
+        
+        if (count === 0) {
+            console.log(`Menu not found with ID: ${menuId}`);
+            return null;
+        }
         
         // Check if the menu is visible, and if not, try to activate the toggle
-        if (toggleSelector) {
-            const menu = this.page.locator(menuSelector);
-            const isVisible = await isElementTrulyVisible(menu);
+        const isVisible = await isElementTrulyVisible(menu);
+        
+        if (!isVisible) {
+            // Try to get the toggle selector from the menu fingerprint
+            const toggleSelector = this.getMenuToggleSelector(menuId);
             
-            if (!isVisible) {
+            if (toggleSelector) {
                 console.log(`Menu is not visible. Attempting to activate toggle: ${toggleSelector}`);
                 
                 // Try to locate and click the toggle
@@ -1634,28 +1677,9 @@ export class MenuTester {
                 } else {
                     console.log(`❌ Toggle element not found: ${toggleSelector}`);
                 }
+            } else {
+                console.log(`No toggle selector found for menu ID: ${menuId}`);
             }
-        }
-        
-        // Get the menu element
-        const menu = this.page.locator(menuSelector);
-        const count = await menu.count();
-        
-        if (count === 0) {
-            console.log(`Menu not found with selector: ${menuSelector}`);
-            return null;
-        }
-        
-        // Get the menu ID
-        let menuId = await menu.first().evaluate(el => el.getAttribute('data-menu-id'));
-        
-        if (!menuId) {
-            console.log(`Menu does not have a data-menu-id attribute. Adding one...`);
-            const newMenuId = `menu-dynamic-${Date.now()}`;
-            await menu.first().evaluate((el, id) => {
-                el.setAttribute('data-menu-id', id);
-            }, newMenuId);
-            menuId = newMenuId;
         }
         
         console.log(`Testing menu with ID: ${menuId}`);
@@ -1719,10 +1743,10 @@ export class MenuTester {
         results.totalMenuItems = await links.count();
         
         // Test visible menu items
-        await this.testVisibleMenuItems(menu.first(), fingerprint, results, 'desktop', openedWithToggle);
+        await this.testVisibleMenuItems(menuId, results, 'desktop', openedWithToggle);
         
         // Test menu dropdowns
-        await this.testMenuDropdown(menuId, fingerprint, results, 'desktop', openedWithToggle);
+        await this.testMenuDropdown(menuId, results, 'desktop', openedWithToggle);
         
         console.log('Desktop: Number of links: ', results.totalMenuItems);
         console.log('Desktop: Number of visible links: ', results.visibleMenuItems);
@@ -1747,10 +1771,10 @@ export class MenuTester {
         };
         
         // Test visible menu items in mobile
-        await this.testVisibleMenuItems(menu.first(), fingerprint, mobileResults, 'mobile', openedWithToggle);
+        await this.testVisibleMenuItems(menuId, mobileResults, 'mobile', openedWithToggle);
         
         // Test menu dropdowns in mobile
-        await this.testMenuDropdown(menuId, fingerprint, mobileResults, 'mobile', openedWithToggle);
+        await this.testMenuDropdown(menuId, mobileResults, 'mobile', openedWithToggle);
         
         console.log('Mobile: Number of links: ', mobileResults.totalMenuItems);
         console.log('Mobile: Number of visible links: ', mobileResults.visibleMenuItems);
@@ -1801,7 +1825,7 @@ export class MenuTester {
         console.log(`\n=== MENU TEST SUMMARY FOR ${menuId} ===`);
         console.log(`Menu Details:`);
         console.log(`  - ID: ${menuId}`);
-        console.log(`  - Selector: ${menuSelector}`);
+        console.log(`  - Selector: [data-menu-id="${menuId}"]`);
         console.log(`  - Classes: ${menuGroup.fingerprint.classes}`);
         console.log(`  - ARIA Attributes: ${results.menusWithAriaAttributes > 0 ? 'Yes' : 'No'}`);
         
@@ -2132,7 +2156,7 @@ export class MenuTester {
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                            
-                            await this.testSpecificMenu(menuSelector, 'desktop', toggleSelector, true);
+                            await this.testSpecificMenu(menu.menuId, 'desktop', true);
                             
                             // Update the unique elements test results
                             // await this.findUniqueNavElements();
@@ -2285,7 +2309,7 @@ export class MenuTester {
                             
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
-                            await this.testSpecificMenu(menuSelector, 'mobile', toggleSelector, true);
+                            await this.testSpecificMenu(menu.menuId, 'mobile', true);
                             
                             // Update the unique elements test results
                             // await this.findUniqueNavElements();
@@ -2399,4 +2423,3 @@ export async function testToggleElementsForHiddenMenus(page: Page): Promise<any>
 /**
  * Test menus on a page
  */
-
