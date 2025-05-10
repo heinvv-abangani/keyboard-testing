@@ -1839,6 +1839,15 @@ export class MenuTester {
                 console.log(`   Mobile Type: ${fingerprint.view.mobile.menuType}`);
                 console.log(`   Classes: ${fingerprint.classes}`);
                 console.log(`   ARIA Attributes: ${fingerprint.ariaAttributes.hasAriaLabel || fingerprint.ariaAttributes.hasRole ? '✅ Yes' : '❌ No'}`);
+                
+                // Display toggle details if they exist
+                if (fingerprint.toggleDetails) {
+                    console.log(`   Toggle Details: ${fingerprint.toggleDetails.success ? '✅ Success' : '❌ Failed'}`);
+                    console.log(`   Toggle Selector: ${fingerprint.toggleDetails.toggleSelector}`);
+                    if (fingerprint.toggleDetails.error) {
+                        console.log(`   Toggle Error: ${fingerprint.toggleDetails.error}`);
+                    }
+                }
 
                 // Check if menu is toggle-based
                 const isToggleBased = fingerprint.view.desktop.menuType.toLowerCase().includes('toggle') ||
@@ -2036,6 +2045,27 @@ export class MenuTester {
                                 success: true
                             });
                             
+                            // Also store toggle details in the menu's fingerprint
+                            menu.fingerprint.toggleDetails = {
+                                toggleSelector,
+                                success: true
+                            };
+                            
+                            // Log to verify the toggle details have been added to the menu's fingerprint
+                            console.log(`\n=== TOGGLE DETAILS ADDED TO MENU ${menu.menuId} FINGERPRINT ===`);
+                            console.log(`Toggle Selector: ${menu.fingerprint.toggleDetails.toggleSelector}`);
+                            console.log(`Success: ${menu.fingerprint.toggleDetails.success}`);
+                            
+                            // Verify the toggle details are in this.menuItems
+                            const menuInItems = this.menuItems?.uniqueGroups.find(g => g.menuId === menu.menuId);
+                            if (menuInItems && menuInItems.fingerprint.toggleDetails) {
+                                console.log(`\n=== VERIFIED TOGGLE DETAILS IN this.menuItems FOR MENU ${menu.menuId} ===`);
+                                console.log(`Toggle Selector in this.menuItems: ${menuInItems.fingerprint.toggleDetails.toggleSelector}`);
+                                console.log(`Success in this.menuItems: ${menuInItems.fingerprint.toggleDetails.success}`);
+                            } else {
+                                console.log(`\n=== WARNING: TOGGLE DETAILS NOT FOUND IN this.menuItems FOR MENU ${menu.menuId} ===`);
+                            }
+                            
                             // Press Escape to close the menu
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
@@ -2072,7 +2102,7 @@ export class MenuTester {
                             await this.testSpecificMenu(menuSelector, 'desktop', toggleSelector, true);
                             
                             // Update the unique elements test results
-                            await this.findUniqueNavElements();
+                            // await this.findUniqueNavElements();
                             
                             break;
                         }
@@ -2169,6 +2199,27 @@ export class MenuTester {
                                 success: true
                             });
                             
+                            // Also store toggle details in the menu's fingerprint
+                            menu.fingerprint.toggleDetails = {
+                                toggleSelector,
+                                success: true
+                            };
+                            
+                            // Log to verify the toggle details have been added to the menu's fingerprint
+                            console.log(`\n=== TOGGLE DETAILS ADDED TO MENU ${menu.menuId} FINGERPRINT (MOBILE) ===`);
+                            console.log(`Toggle Selector: ${menu.fingerprint.toggleDetails.toggleSelector}`);
+                            console.log(`Success: ${menu.fingerprint.toggleDetails.success}`);
+                            
+                            // Verify the toggle details are in this.menuItems
+                            const menuInItems = this.menuItems?.uniqueGroups.find(g => g.menuId === menu.menuId);
+                            if (menuInItems && menuInItems.fingerprint.toggleDetails) {
+                                console.log(`\n=== VERIFIED TOGGLE DETAILS IN this.menuItems FOR MENU ${menu.menuId} (MOBILE) ===`);
+                                console.log(`Toggle Selector in this.menuItems: ${menuInItems.fingerprint.toggleDetails.toggleSelector}`);
+                                console.log(`Success in this.menuItems: ${menuInItems.fingerprint.toggleDetails.success}`);
+                            } else {
+                                console.log(`\n=== WARNING: TOGGLE DETAILS NOT FOUND IN this.menuItems FOR MENU ${menu.menuId} (MOBILE) ===`);
+                            }
+                            
                             // Press Escape to close the menu
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
@@ -2204,7 +2255,7 @@ export class MenuTester {
                             await this.testSpecificMenu(menuSelector, 'mobile', toggleSelector, true);
                             
                             // Update the unique elements test results
-                            await this.findUniqueNavElements();
+                            // await this.findUniqueNavElements();
                             
                             break;
                         }
@@ -2261,6 +2312,33 @@ export class MenuTester {
             results.mobile.details.filter(detail => detail.success).forEach((detail, index) => {
                 console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
             });
+        }
+        
+        // Log the entire this.menuItems object to verify all toggle details
+        console.log(`\n=== FINAL this.menuItems WITH TOGGLE DETAILS ===`);
+        if (this.menuItems) {
+            const menusWithToggleDetails = this.menuItems.uniqueGroups
+                .filter(group => group.fingerprint.toggleDetails)
+                .map(group => ({
+                    menuId: group.menuId,
+                    toggleDetails: group.fingerprint.toggleDetails
+                }));
+            
+            if (menusWithToggleDetails.length > 0) {
+                console.log(`Found ${menusWithToggleDetails.length} menus with toggle details:`);
+                menusWithToggleDetails.forEach((menu, index) => {
+                    console.log(`${index + 1}. Menu ID: ${menu.menuId}`);
+                    console.log(`   Toggle Selector: ${menu.toggleDetails?.toggleSelector}`);
+                    console.log(`   Success: ${menu.toggleDetails?.success}`);
+                    if (menu.toggleDetails?.error) {
+                        console.log(`   Error: ${menu.toggleDetails.error}`);
+                    }
+                });
+            } else {
+                console.log(`No menus with toggle details found in this.menuItems`);
+            }
+        } else {
+            console.log(`this.menuItems is null or undefined`);
         }
         
         return results;

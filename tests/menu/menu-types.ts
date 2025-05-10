@@ -25,6 +25,13 @@ export interface NavFingerprint {
     name: string;
     toggleId: string; // ID of the toggle element that controls this menu
     
+    // Toggle details
+    toggleDetails?: {
+        toggleSelector: string;
+        success: boolean;
+        error?: string;
+    };
+    
     // View-specific information for desktop and mobile
     view: {
         desktop: MenuView;
