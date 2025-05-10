@@ -1801,6 +1801,105 @@ export class MenuTester {
         
         return results;
     }
+    
+    /**
+     * Test menus on a website
+     * @param websiteUrl The URL of the website to test
+     * @returns Test results
+     */
+    async testMenus(websiteUrl: string) {
+        console.log(`\n=== TESTING MENUS ON ${websiteUrl} ===`);
+        
+        // Go to the URL
+        await goToUrl(this.page, websiteUrl);
+        
+        // Close any popups that might interfere with testing
+        await detectAndClosePopup(this.page);
+        
+        // Find unique nav elements
+        const navInfo = await this.findUniqueNavElements();
+
+        // Iterate through menus using the uniqueNavElements data
+        // The navInfo is already stored in this.uniqueNavElements, so no need to pass it explicitly
+        const menuResults = await this.iterateMenus();
+        
+        // Check for hidden menus
+        const hiddenMenus = await this.checkForHiddenMenus();
+        
+        // Test toggle elements for hidden menus
+        const toggleResults = await testToggleElementsForHiddenMenus(this.page, navInfo);
+        
+        // Generate a comprehensive summary of all menu results
+        console.log(`\n=== COMPREHENSIVE MENU TEST SUMMARY ===`);
+        
+        // List all menus and their results
+        console.log(`\nAll Menus Tested:`);
+        
+        if (this.uniqueNavElements) {
+            const allMenus = this.uniqueNavElements.uniqueGroups;
+            
+            allMenus.forEach((menu, index) => {
+                const fingerprint = menu.fingerprint;
+                const menuId = menu.menuId;
+                
+                console.log(`\n${index + 1}. Menu: ${fingerprint.name} (ID: ${menuId})`);
+                console.log(`   Selector: [data-menu-id="${menuId}"]`);
+                console.log(`   Desktop Type: ${fingerprint.view.desktop.menuType}`);
+                console.log(`   Mobile Type: ${fingerprint.view.mobile.menuType}`);
+                console.log(`   Classes: ${fingerprint.classes}`);
+                console.log(`   ARIA Attributes: ${fingerprint.ariaAttributes.hasAriaLabel || fingerprint.ariaAttributes.hasRole ? '✅ Yes' : '❌ No'}`);
+
+                // Check if menu is toggle-based
+                const isToggleBased = fingerprint.view.desktop.menuType.toLowerCase().includes('toggle') ||
+                                     fingerprint.view.mobile.menuType.toLowerCase().includes('toggle');
+                
+                // Desktop visibility
+                console.log(`   Desktop Visibility: ${fingerprint.view.desktop.visibility ?
+                    (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
+                    '❌ Hidden'}`);
+                if (fingerprint.view.desktop.visibility) {
+                    console.log(`   Desktop Items: ${fingerprint.view.desktop.visibleItems}`);
+                    console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                        (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                }
+                
+                // Mobile visibility
+                console.log(`   Mobile Visibility: ${fingerprint.view.mobile.visibility ?
+                    (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
+                    (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+                
+                // Show information about the menu after toggle activation if it's toggle-based
+                if (isToggleBased) {
+                    console.log(`   Mobile visibility after toggle activation: ✅ Visible`);
+                    console.log(`   Mobile items after toggle activation: ${fingerprint.view.mobile.visibleItems || 'Unknown'}`);
+                    console.log(`   Mobile Dropdowns after toggle activation: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                        (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                }
+                // Show regular information if the menu is currently visible and not toggle-based
+                else if (fingerprint.view.mobile.visibility) {
+                    console.log(`   Mobile Items: ${fingerprint.view.mobile.visibleItems}`);
+                    console.log(`   Mobile Dropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                        (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                }
+            });
+        }
+        
+        // Return the results
+        return {
+            uniqueNavInfo: this.uniqueNavElements,
+            hiddenMenus,
+            menuResults,
+            toggleResults
+        };
+    }
+}
+
+/**
+ * @deprecated Use MenuTester.testMenus() instead
+ */
+export async function testMenus(page: Page, websiteUrl: string) {
+    const menuTester = new MenuTester(page);
+    return await menuTester.testMenus(websiteUrl);
 }
 
 /**
@@ -2194,91 +2293,4 @@ export async function testToggleElementsForHiddenMenus(page: Page, navInfo: NavI
 /**
  * Test menus on a page
  */
-export async function testMenus(page: Page, websiteUrl: string) {
-    console.log(`\n=== TESTING MENUS ON ${websiteUrl} ===`);
-    
-    // Go to the URL
-    await goToUrl(page, websiteUrl);
-    
-    // Close any popups that might interfere with testing
-    await detectAndClosePopup(page);
-    
-    // Create a MenuTester instance
-    const menuTester = new MenuTester(page);
-    
-    // Find unique nav elements
-    const navInfo = await menuTester.findUniqueNavElements();
-
-    // Iterate through menus using the uniqueNavElements data
-    // The navInfo is already stored in menuTester.uniqueNavElements, so no need to pass it explicitly
-    const menuResults = await menuTester.iterateMenus();
-    
-    // Check for hidden menus
-    const hiddenMenus = await menuTester.checkForHiddenMenus();
-    
-    // Test toggle elements for hidden menus
-    const toggleResults = await testToggleElementsForHiddenMenus(page, navInfo);
-    // Generate a comprehensive summary of all menu results
-    console.log(`\n=== COMPREHENSIVE MENU TEST SUMMARY ===`);
-    
-    // List all menus and their results
-    console.log(`\nAll Menus Tested:`);
-    
-    if (menuTester.uniqueNavElements) {
-        const allMenus = menuTester.uniqueNavElements.uniqueGroups;
-        
-        allMenus.forEach((menu, index) => {
-            const fingerprint = menu.fingerprint;
-            const menuId = menu.menuId;
-            
-            console.log(`\n${index + 1}. Menu: ${fingerprint.name} (ID: ${menuId})`);
-            console.log(`   Selector: [data-menu-id="${menuId}"]`);
-            console.log(`   Desktop Type: ${fingerprint.view.desktop.menuType}`);
-            console.log(`   Mobile Type: ${fingerprint.view.mobile.menuType}`);
-            console.log(`   Classes: ${fingerprint.classes}`);
-            console.log(`   ARIA Attributes: ${fingerprint.ariaAttributes.hasAriaLabel || fingerprint.ariaAttributes.hasRole ? '✅ Yes' : '❌ No'}`);
-
-            // Check if menu is toggle-based
-            const isToggleBased = fingerprint.view.desktop.menuType.toLowerCase().includes('toggle') ||
-                                 fingerprint.view.mobile.menuType.toLowerCase().includes('toggle');
-            
-            // Desktop visibility
-            console.log(`   Desktop Visibility: ${fingerprint.view.desktop.visibility ?
-                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
-                '❌ Hidden'}`);
-            if (fingerprint.view.desktop.visibility) {
-                console.log(`   Desktop Items: ${fingerprint.view.desktop.visibleItems}`);
-                console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
-                    (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
-            }
-            
-            // Mobile visibility
-            console.log(`   Mobile Visibility: ${fingerprint.view.mobile.visibility ?
-                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
-                (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
-            
-            // Show information about the menu after toggle activation if it's toggle-based
-            if (isToggleBased) {
-                console.log(`   Mobile visibility after toggle activation: ✅ Visible`);
-                console.log(`   Mobile items after toggle activation: ${fingerprint.view.mobile.visibleItems || 'Unknown'}`);
-                console.log(`   Mobile Dropdowns after toggle activation: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
-                    (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
-            }
-            // Show regular information if the menu is currently visible and not toggle-based
-            else if (fingerprint.view.mobile.visibility) {
-                console.log(`   Mobile Items: ${fingerprint.view.mobile.visibleItems}`);
-                console.log(`   Mobile Dropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
-                    (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
-            }
-        });
-    }
-    
-    // Return the results
-    return {
-        uniqueNavInfo: menuTester.uniqueNavElements,
-        hiddenMenus,
-        menuResults,
-        toggleResults
-    };
-}
 
