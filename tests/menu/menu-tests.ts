@@ -218,53 +218,53 @@ export class MenuTester {
                     notes: []
                 };
 
-               // Mobile data will be updated in a separate method with proper viewport sizing
+            //    // Mobile data will be updated in a separate method with proper viewport sizing
                
-               // Check visibility in mobile viewport
-               const isMobileVisible = (nav: Element) => {
-                   // Get element details for debugging
-                   const tagName = nav.tagName.toLowerCase();
-                   const id = nav.id ? `#${nav.id}` : '';
-                   const classes = Array.from(nav.classList).join(' ');
-                   const selector = tagName + id + (classes ? ` (${classes})` : '');
+            //    // Check visibility in mobile viewport
+            //    const isMobileVisible = (nav: Element) => {
+            //        // Get element details for debugging
+            //        const tagName = nav.tagName.toLowerCase();
+            //        const id = nav.id ? `#${nav.id}` : '';
+            //        const classes = Array.from(nav.classList).join(' ');
+            //        const selector = tagName + id + (classes ? ` (${classes})` : '');
                    
-                   console.log(`Checking mobile visibility for: ${selector}`);
-                   console.log('element menuid', fingerprint.menuId);
+            //        console.log(`Checking mobile visibility for: ${selector}`);
+            //        console.log('element menuid', fingerprint.menuId);
                    
-                   // First check basic visibility with checkVisibility()
-                   const isHidden = !(nav as HTMLElement).checkVisibility();
+            //        // First check basic visibility with checkVisibility()
+            //        const isHidden = !(nav as HTMLElement).checkVisibility();
                 
-                   const isHiddenCustomCheck = window.getComputedStyle(nav).visibility === 'hidden' ||
-                        window.getComputedStyle(nav).display === 'none' ||
-                        (nav as HTMLElement).offsetParent === null;
+            //        const isHiddenCustomCheck = window.getComputedStyle(nav).visibility === 'hidden' ||
+            //             window.getComputedStyle(nav).display === 'none' ||
+            //             (nav as HTMLElement).offsetParent === null;
 
-                   if (isHidden || isHiddenCustomCheck) {
-                       console.log(`Element is hidden by checkVisibility()`);
-                       return false;
-                   }
+            //        if (isHidden || isHiddenCustomCheck) {
+            //            console.log(`Element is hidden by checkVisibility()`);
+            //            return false;
+            //        }
 
-                   return true;
-               };
+            //        return true;
+            //    };
                
-               // Count visible links in mobile viewport
-               const mobileVisibleLinks = links.filter(link => (link as HTMLElement).checkVisibility()).length;
+            //    // Count visible links in mobile viewport
+            //    const mobileVisibleLinks = links.filter(link => (link as HTMLElement).checkVisibility()).length;
                
-               // Get computed style in mobile viewport
-               const mobileComputedStyle = window.getComputedStyle(nav);
+            //    // Get computed style in mobile viewport
+            //    const mobileComputedStyle = window.getComputedStyle(nav);
                
-               // Update mobile fingerprint data
-               fingerprint.view.mobile = {
-                   menuType: determineMenuType(nav, false) as MenuType,
-                   visibility: isMobileVisible(nav),
-                   visibleItems: mobileVisibleLinks,
-                   hasKeyboardDropdowns: null,
-                   hasMouseOnlyDropdowns: null,
-                   display: mobileComputedStyle.display,
-                   position: mobileComputedStyle.position,
-                   numberOfMenuItems: links.length,
-                   numberOfVisibleMenuItems: mobileVisibleLinks,
-                   numberOfFocusableMenuItems: null
-               };
+            //    // Update mobile fingerprint data
+            //    fingerprint.view.mobile = {
+            //        menuType: determineMenuType(nav, false) as MenuType,
+            //        visibility: isMobileVisible(nav),
+            //        visibleItems: mobileVisibleLinks,
+            //        hasKeyboardDropdowns: null,
+            //        hasMouseOnlyDropdowns: null,
+            //        display: mobileComputedStyle.display,
+            //        position: mobileComputedStyle.position,
+            //        numberOfMenuItems: links.length,
+            //        numberOfVisibleMenuItems: mobileVisibleLinks,
+            //        numberOfFocusableMenuItems: null
+            //    };
                 
                 const navSelector = `[data-menu-id="${fingerprint.menuId}"]`;
                 
@@ -437,7 +437,12 @@ export class MenuTester {
                         
                         // First check basic visibility with checkVisibility()
                         const isHidden = !(nav as HTMLElement).checkVisibility();
-                        if (isHidden) {
+
+                        const isHiddenCustomCheck = window.getComputedStyle(nav).visibility === 'hidden' ||
+                                window.getComputedStyle(nav).display === 'none' ||
+                                (nav as HTMLElement).offsetParent === null;
+
+                        if (isHidden || isHiddenCustomCheck) {
                             console.log(`Element is hidden by checkVisibility()`);
                             return false;
                         }
