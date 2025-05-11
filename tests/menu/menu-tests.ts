@@ -610,7 +610,7 @@ export class MenuTester {
             }
 
             console.log(`\nMobile visibility for menu ${group.menuId}:`);
-            console.log(`  - Mobile visibility: ${group.fingerprint.view.mobile.visibility ? 'Visible' : 'Hidden'}`);
+            console.log(`\n  - Mobile visibility: ${group.fingerprint.view.mobile.visibility ? 'Visible' : 'Hidden'}`);
             console.log(`  - Mobile menu type: ${group.fingerprint.view.mobile.menuType}`);
             console.log(`  - Mobile visible items: ${group.fingerprint.view.mobile.visibleItems}`);
 
@@ -1793,14 +1793,16 @@ export class MenuTester {
         
         if (!viewportToTest || viewportToTest === 'desktop') {
             console.log(`Desktop Visibility: ${fingerprint.view.desktop.visibility ?
-                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
-                (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+                (isToggleBased ? '✅ Visible after click on toggle element' : 'Visible') :
+                (isToggleBased ? '❌ Hidden (✅ Visible after toggle activation)' : 'Hidden')}`);
         }
         
+        console.log( fingerprint.view.mobile );
+
         if (!viewportToTest || viewportToTest === 'mobile') {
-            console.log(`Mobile Visibility: ${fingerprint.view.mobile.visibility ?
-                (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
-                (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+            console.log(`\nMobile Visibility: ${fingerprint.view.mobile.visibility ?
+                (isToggleBased ? '\n✅ Visible after click on toggle element' : 'Visible') :
+                (isToggleBased ? '\n❌ Hidden (✅ Visible after toggle activation)' : 'Hidden')}`);
             
             // Show information about the menu after toggle activation if it's toggle-based
             if (isToggleBased) {
@@ -1907,18 +1909,20 @@ export class MenuTester {
                 
                 // Desktop visibility
                 console.log(`   Desktop Visibility: ${fingerprint.view.desktop.visibility ?
-                    (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
-                    '❌ Hidden'}`);
+                    (isToggleBased ? '✅ Visible after click on toggle element' : 'Visible') :
+                    'Hidden'}`);
                 if (fingerprint.view.desktop.visibility) {
                     console.log(`   Desktop Items: ${fingerprint.view.desktop.visibleItems}`);
                     console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
                         (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
                 }
                 
+                console.log( fingerprint.view.mobile );
+                
                 // Mobile visibility
-                console.log(`   Mobile Visibility: ${fingerprint.view.mobile.visibility ?
-                    (isToggleBased ? '✅ Visible after click on toggle element' : '✅ Visible') :
-                    (isToggleBased ? '❌ Hidden (Visible after toggle activation)' : '❌ Hidden')}`);
+                console.log(`\n   Mobile Visibility: ${fingerprint.view.mobile.visibility ?
+                    (isToggleBased ? '✅ Visible after click on toggle element' : 'Visible') :
+                    (isToggleBased ? '❌ Hidden (✅ Visible after toggle activation)' : 'Hidden')}`);
                 
                 // Show information about the menu after toggle activation if it's toggle-based
                 if (isToggleBased) {

@@ -17,6 +17,9 @@ export interface MenuView {
     hasMouseOnlyDropdowns: boolean | null;
     display: string;
     position: string;
+    numberOfMenuItems: number | null;
+    numberOfVisibleMenuItems: number | null;
+    numberOfFocusableMenuItems: number | null;
 }
 
 // Define types for the nav element fingerprint with expanded properties
