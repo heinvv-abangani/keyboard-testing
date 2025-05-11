@@ -1854,8 +1854,7 @@ export class MenuTester {
                 (isToggleBased ? '✅ Visible after click on toggle element' : 'Visible') :
                 (isToggleBased ? '❌ Hidden (✅ Visible after toggle activation)' : 'Hidden')}`);
         }
-        
-        console.log( fingerprint.view.mobile );
+
 
         if (!viewportToTest || viewportToTest === 'mobile') {
             console.log(`\nMobile Visibility: ${fingerprint.view.mobile.visibility ?
@@ -1974,8 +1973,11 @@ export class MenuTester {
                     console.log(`   Desktop Menu Items: ${fingerprint.view.desktop.numberOfMenuItems}`);
                     console.log(`   Desktop Visible Menu Items: ${fingerprint.view.desktop.numberOfVisibleMenuItems}`);
                     console.log(`   Desktop Focusable Menu Items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
-                    console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
-                        (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+
+                    if ( 'SimpleMenu' !== fingerprint.view.desktop.menuType ) {
+                        console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                            (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                    }
                 }
                 
                 console.log( fingerprint.view.mobile );
