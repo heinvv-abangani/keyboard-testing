@@ -162,7 +162,10 @@ export class MenuTester {
                             hasKeyboardDropdowns: null,
                             hasMouseOnlyDropdowns: null,
                             display: window.getComputedStyle(nav).display,
-                            position: window.getComputedStyle(nav).position
+                            position: window.getComputedStyle(nav).position,
+                            numberOfMenuItems: links.length,
+                            numberOfVisibleMenuItems: links.filter(link => (link as HTMLElement).checkVisibility).length,
+                            numberOfFocusableMenuItems: null
                         },
                         mobile: {
                             menuType: determineMenuType(nav, false) as MenuType,
@@ -171,7 +174,10 @@ export class MenuTester {
                             hasKeyboardDropdowns: null,
                             hasMouseOnlyDropdowns: null,
                             display: '',
-                            position: ''
+                            position: '',
+                            numberOfMenuItems: links.length,
+                            numberOfVisibleMenuItems: null,
+                            numberOfFocusableMenuItems: null
                         } as MenuView
                     },
                     tagName: nav.tagName.toLowerCase(),
@@ -249,7 +255,10 @@ export class MenuTester {
                    hasKeyboardDropdowns: null,
                    hasMouseOnlyDropdowns: null,
                    display: mobileComputedStyle.display,
-                   position: mobileComputedStyle.position
+                   position: mobileComputedStyle.position,
+                   numberOfMenuItems: links.length,
+                   numberOfVisibleMenuItems: mobileVisibleLinks,
+                   numberOfFocusableMenuItems: null
                };
                 
                 const navSelector = `[data-menu-id="${fingerprint.menuId}"]`;
@@ -573,7 +582,10 @@ export class MenuTester {
                         hasKeyboardDropdowns: false, // Will be determined during testing
                         hasMouseOnlyDropdowns: false, // Will be determined during testing
                         display: mobileComputedStyle.display,
-                        position: mobileComputedStyle.position
+                        position: mobileComputedStyle.position,
+                        numberOfMenuItems: links.length,
+                        numberOfVisibleMenuItems: mobileVisibleLinks,
+                        numberOfFocusableMenuItems: null
                     };
                 }, selector);
                 
@@ -613,6 +625,9 @@ export class MenuTester {
             console.log(`\n  - Mobile visibility: ${group.fingerprint.view.mobile.visibility ? 'Visible' : 'Hidden'}`);
             console.log(`  - Mobile menu type: ${group.fingerprint.view.mobile.menuType}`);
             console.log(`  - Mobile visible items: ${group.fingerprint.view.mobile.visibleItems}`);
+            console.log(`  - Mobile menu items: ${group.fingerprint.view.mobile.numberOfMenuItems}`);
+            console.log(`  - Mobile visible menu items: ${group.fingerprint.view.mobile.numberOfVisibleMenuItems}`);
+            console.log(`  - Mobile focusable menu items: ${group.fingerprint.view.mobile.numberOfFocusableMenuItems}`);
 
             i++;
         }
@@ -993,6 +1008,12 @@ export class MenuTester {
                 console.log(`\nMenu ${i + 1} (${fingerprint.name}) updated properties:`);
                 console.log(`  - Desktop hasKeyboardDropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns}`);
                 console.log(`  - Desktop hasMouseOnlyDropdowns: ${fingerprint.view.desktop.hasMouseOnlyDropdowns}`);
+                console.log(`  - Desktop menu items: ${fingerprint.view.desktop.numberOfMenuItems}`);
+                console.log(`  - Desktop visible menu items: ${fingerprint.view.desktop.numberOfVisibleMenuItems}`);
+                console.log(`  - Desktop focusable menu items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
+                console.log(`  - Mobile menu items: ${fingerprint.view.mobile.numberOfMenuItems}`);
+                console.log(`  - Mobile visible menu items: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
+                console.log(`  - Mobile focusable menu items: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
                 console.log(`  - Opens on Enter: ${fingerprint.interactionBehavior.opensOnEnter}`);
                 console.log(`  - Opens on Space: ${fingerprint.interactionBehavior.opensOnSpace}`);
                 console.log(`  - Opens on MouseOver: ${fingerprint.interactionBehavior.opensOnMouseOver}`);
@@ -1206,9 +1227,20 @@ export class MenuTester {
         // Update the appropriate results counter based on viewport
         if (viewport === 'desktop') {
             results.keyboardFocusableItems += focusableCount;
+            // Update the fingerprint with the number of focusable items
+            fingerprint.view.desktop.numberOfFocusableMenuItems = focusableCount;
         } else {
             // For mobile, update the mobile-specific counter
             results.mobileKeyboardFocusableItems = focusableCount;
+            // Update the fingerprint with the number of focusable items
+            fingerprint.view.mobile.numberOfFocusableMenuItems = focusableCount;
+        }
+        
+        // Also update the number of visible menu items in the fingerprint
+        if (viewport === 'desktop') {
+            fingerprint.view.desktop.numberOfVisibleMenuItems = visibleLinks.length;
+        } else {
+            fingerprint.view.mobile.numberOfVisibleMenuItems = visibleLinks.length;
         }
     }
     
@@ -1487,9 +1519,35 @@ export class MenuTester {
         
         if (viewport === 'desktop') {
             results.keyboardFocusableItems += focusableCount;
+            
+            // Get the menu fingerprint to update it
+            const menuGroup = this.getMenuFingerprint(menuId);
+            if (menuGroup) {
+                // Update the fingerprint with the number of focusable dropdown items
+                // Add to the existing count since this is for dropdown items
+                const currentCount = menuGroup.fingerprint.view.desktop.numberOfFocusableMenuItems || 0;
+                menuGroup.fingerprint.view.desktop.numberOfFocusableMenuItems = currentCount + focusableCount;
+                
+                // Also update the number of visible items
+                const currentVisibleCount = menuGroup.fingerprint.view.desktop.numberOfVisibleMenuItems || 0;
+                menuGroup.fingerprint.view.desktop.numberOfVisibleMenuItems = currentVisibleCount + visibleLinksCount;
+            }
         } else {
             // For mobile, update the mobile-specific counter
             results.mobileKeyboardFocusableItems += focusableCount;
+            
+            // Get the menu fingerprint to update it
+            const menuGroup = this.getMenuFingerprint(menuId);
+            if (menuGroup) {
+                // Update the fingerprint with the number of focusable dropdown items
+                // Add to the existing count since this is for dropdown items
+                const currentCount = menuGroup.fingerprint.view.mobile.numberOfFocusableMenuItems || 0;
+                menuGroup.fingerprint.view.mobile.numberOfFocusableMenuItems = currentCount + focusableCount;
+                
+                // Also update the number of visible items
+                const currentVisibleCount = menuGroup.fingerprint.view.mobile.numberOfVisibleMenuItems || 0;
+                menuGroup.fingerprint.view.mobile.numberOfVisibleMenuItems = currentVisibleCount + visibleLinksCount;
+            }
         }
 
         console.log( 'end testFocusableDropdownItems' );
@@ -1913,6 +1971,9 @@ export class MenuTester {
                     'Hidden'}`);
                 if (fingerprint.view.desktop.visibility) {
                     console.log(`   Desktop Items: ${fingerprint.view.desktop.visibleItems}`);
+                    console.log(`   Desktop Menu Items: ${fingerprint.view.desktop.numberOfMenuItems}`);
+                    console.log(`   Desktop Visible Menu Items: ${fingerprint.view.desktop.numberOfVisibleMenuItems}`);
+                    console.log(`   Desktop Focusable Menu Items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
                     console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
                         (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
                 }
@@ -1930,12 +1991,21 @@ export class MenuTester {
                     console.log(`   Mobile items after toggle activation: ${fingerprint.view.mobile.visibleItems || 'Unknown'}`);
                     console.log(`   Mobile Dropdowns after toggle activation: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
                         (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                    console.log(`   Mobile numberOfMenuItems: ${fingerprint.view.mobile.numberOfMenuItems}`);
+                    console.log(`   Mobile numberOfVisibleMenuItems: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
+                    console.log(`   Mobile numberOfFocusableMenuItems: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
                 }
                 // Show regular information if the menu is currently visible and not toggle-based
                 else if (fingerprint.view.mobile.visibility) {
                     console.log(`   Mobile Items: ${fingerprint.view.mobile.visibleItems}`);
+                    console.log(`   Mobile Menu Items: ${fingerprint.view.mobile.numberOfMenuItems}`);
+                    console.log(`   Mobile Visible Menu Items: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
+                    console.log(`   Mobile Focusable Menu Items: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
                     console.log(`   Mobile Dropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
                         (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                    console.log(`   Mobile numberOfMenuItems: ${fingerprint.view.mobile.numberOfMenuItems}`);
+                    console.log(`   Mobile numberOfVisibleMenuItems: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
+                    console.log(`   Mobile numberOfFocusableMenuItems: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
                 }
             });
         }
