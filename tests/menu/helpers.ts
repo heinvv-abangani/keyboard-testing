@@ -543,29 +543,31 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         }
         
         console.log(`❌ Dropdown does not respond to hover or click`);
-    } else if( !! visibleDropdownElement ) {
-        console.log(`Found a visible dropdown without aria-expanded`);
-
-        // First, try hover
-        try {
-            await menuItem.hover();
-            await page.waitForTimeout(500); // Wait for dropdown animation, if any
-
-            const dropdownVisibleAfterHover = await menuItem.locator('ul').isVisible();
-            if ( dropdownVisibleAfterHover ) {
-                console.log(`✅ Dropdown opens on hover`);
-
-                return {
-                    isAccessible: true,
-                    opensOnMouseOver: true,
-                    opensOnClick: true,
-                    closesOnClickOutside: false,
-                };
-            }
-        } catch (error) {
-            console.log(`⚠️ Error during hover test: ${error.message}`);
-        }
     } else {
+        if( !! visibleDropdownElement ) {
+            console.log(`Found a visible dropdown without aria-expanded`);
+    
+            // First, try hover
+            try {
+                await menuItem.hover();
+                await page.waitForTimeout(500); // Wait for dropdown animation, if any
+    
+                const dropdownVisibleAfterHover = await menuItem.locator('ul').isVisible();
+                if ( dropdownVisibleAfterHover ) {
+                    console.log(`✅ Dropdown opens on hover`);
+    
+                    return {
+                        isAccessible: true,
+                        opensOnMouseOver: true,
+                        opensOnClick: true,
+                        closesOnClickOutside: false,
+                    };
+                }
+            } catch (error) {
+                console.log(`⚠️ Error during hover test: ${error.message}`);
+            }
+        }
+        
         console.log(`Menu item does not have aria-expanded attribute`);
         
         // Check if it has aria-controls attribute
