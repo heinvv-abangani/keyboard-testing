@@ -404,6 +404,40 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         
         return null;
     });
+
+    let visibleDropdownElement;
+
+    if (!expandedElement) {
+        // First, check if there's a dropdown (ul) element
+        const dropdown = menuItem.locator('ul').first();
+        const dropdownExists = await dropdown.count() > 0;
+        
+        if (dropdownExists) {
+            // Get all list items in the dropdown
+            const items = dropdown.locator('li');
+            const itemCount = await items.count();
+            
+            // Check if any items are visible using isElementTrulyVisible
+            let hasVisibleItems = false;
+            for (let i = 0; i < itemCount; i++) {
+                const item = items.nth(i);
+                if (await isElementTrulyVisible(item)) {
+                    hasVisibleItems = true;
+                    break;
+                }
+            }
+            
+            if (hasVisibleItems) {
+                // Get the HTML of the dropdown for the return value
+                const dropdownHTML = await dropdown.evaluate(el => el.outerHTML);
+                
+                visibleDropdownElement = {
+                    elementHTML: dropdownHTML,
+                    self: false
+                };
+            }
+        }
+    }
     
     if (expandedElement) {
         // Create a locator for the element with aria-expanded
@@ -497,8 +531,8 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
                     return {
                         isAccessible: true,
                         opensOnMouseOver: false,
-                        opensOnClick: true,
-                        closesOnClickOutside: closesOnOutsideClick
+                        opensOnClick: false,
+                        closesOnClickOutside: false,
                     };
                 }
             } catch (error) {
@@ -509,6 +543,28 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         }
         
         console.log(`❌ Dropdown does not respond to hover or click`);
+    } else if( !! visibleDropdownElement ) {
+        console.log(`Found a visible dropdown without aria-expanded`);
+
+        // First, try hover
+        try {
+            await menuItem.hover();
+            await page.waitForTimeout(500); // Wait for dropdown animation, if any
+
+            const dropdownVisibleAfterHover = await menuItem.locator('ul').isVisible();
+            if ( dropdownVisibleAfterHover ) {
+                console.log(`✅ Dropdown opens on hover`);
+
+                return {
+                    isAccessible: true,
+                    opensOnMouseOver: true,
+                    opensOnClick: true,
+                    closesOnClickOutside: false,
+                };
+            }
+        } catch (error) {
+            console.log(`⚠️ Error during hover test: ${error.message}`);
+        }
     } else {
         console.log(`Menu item does not have aria-expanded attribute`);
         
