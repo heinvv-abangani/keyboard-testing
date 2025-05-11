@@ -1083,14 +1083,8 @@ export class MenuTester {
         // Add data-menu-visible-count attribute to each visible link
         for (let i = 0; i < count; i++) {
             const link = links.nth(i);
-            const isVisible = await link.evaluate(el => {
-                const style = window.getComputedStyle(el);
-                const display = style.display;
-                const opacity = parseFloat(style.opacity);
-                const isStyleVisible = (display !== 'none' && opacity > 0);
-                const isElementVisible = (el as HTMLElement).checkVisibility();
-                return isStyleVisible && isElementVisible;
-            });
+ 
+            const isVisible = await isElementTrulyVisible(link);
             
             if (isVisible) {
                 // Add the visible count attribute to the link
@@ -1150,11 +1144,11 @@ export class MenuTester {
                 const elementClass = active.className || '';
                 const elementText = active.textContent?.trim() || '';
                 const elementHref = active.getAttribute('href') || '';
+                // Create a unique identifier for this element without using :contains()
                 const elementPath = active.tagName +
                     (elementId ? '#' + elementId : '') +
                     (elementClass ? '.' + elementClass.replace(/\s+/g, '.') : '') +
-                    (elementHref ? '[href="' + elementHref + '"]' : '') +
-                    (elementText ? ':contains("' + elementText + '")' : '');
+                    (elementHref ? '[href="' + elementHref + '"]' : '');
                 
                 // Check if we've already visited this element
                 const currentVisitId = active.getAttribute('data-menu-focus');
@@ -1212,10 +1206,20 @@ export class MenuTester {
                 visitedElements.set(focusedElement.elementPath, true);
             }
             
-            // If the focused element is a link, increment the counter
+            // If the focused element is a link, check if it's truly visible before incrementing the counter
             if (focusedElement.isLink) {
-                focusableCount++;
-                console.log(`Focused menu item: "${focusedElement.text}" (${viewport}) - Path: ${focusedElement.elementPath}`);
+                // Get the actual element to check visibility
+                const element = await this.page.locator(focusedElement.elementPath).first();
+                
+                // Use the comprehensive isElementTrulyVisible function
+                const isVisible = await isElementTrulyVisible(element);
+                
+                if (isVisible) {
+                    focusableCount++;
+                    console.log(`Focused menu item: "${focusedElement.text}" (${viewport}) - Path: ${focusedElement.elementPath} - Visible: ✅`);
+                } else {
+                    console.log(`Focused menu item: "${focusedElement.text}" (${viewport}) - Path: ${focusedElement.elementPath} - Visible: ❌`);
+                }
             }
         }
         
@@ -1429,11 +1433,11 @@ export class MenuTester {
                 const elementClass = active.className || '';
                 const elementText = active.textContent?.trim() || '';
                 const elementHref = active.getAttribute('href') || '';
+                // Create a unique identifier for this element without using :contains()
                 const elementPath = active.tagName +
                     (elementId ? '#' + elementId : '') +
                     (elementClass ? '.' + elementClass.replace(/\s+/g, '.') : '') +
-                    (elementHref ? '[href="' + elementHref + '"]' : '') +
-                    (elementText ? ':contains("' + elementText + '")' : '');
+                    (elementHref ? '[href="' + elementHref + '"]' : '');
                 
                 return {
                     tagName: active.tagName.toLowerCase(),
@@ -1499,8 +1503,18 @@ export class MenuTester {
                 (focusedElement.tagName && focusedElement.text); // Any element with text is likely interactive
                 
             if (isFocusableElement) {
-                focusableCount++;
-                console.log(`Counting focusable element: "${focusedElement.text}" (${focusedElement.tagName})`);
+                // Get the actual element to check visibility
+                const element = await this.page.locator(focusedElement.elementPath).first();
+                
+                // Use the comprehensive isElementTrulyVisible function
+                const isVisible = await isElementTrulyVisible(element);
+                
+                if (isVisible) {
+                    focusableCount++;
+                    console.log(`Counting focusable element: "${focusedElement.text}" (${focusedElement.tagName}) - Visible: ✅`);
+                } else {
+                    console.log(`Found element but not visible: "${focusedElement.text}" (${focusedElement.tagName}) - Visible: ❌`);
+                }
             }
         }
 
