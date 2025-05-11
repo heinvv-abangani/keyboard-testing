@@ -233,7 +233,12 @@ export class MenuTester {
                    
                    // First check basic visibility with checkVisibility()
                    const isHidden = !(nav as HTMLElement).checkVisibility();
-                   if (isHidden) {
+                
+                   const isHiddenCustomCheck = window.getComputedStyle(nav).visibility === 'hidden' ||
+                        window.getComputedStyle(nav).display === 'none' ||
+                        (nav as HTMLElement).offsetParent === null;
+
+                   if (isHidden || isHiddenCustomCheck) {
                        console.log(`Element is hidden by checkVisibility()`);
                        return false;
                    }
@@ -953,6 +958,9 @@ export class MenuTester {
             
             const menuSelector = `[data-menu-id="${group.menuId}"]`;
             const menu = this.page.locator(menuSelector).first();
+
+            // HVV.
+            console.log( 'dropdown visible', fingerprint.view.mobile);
             
             // If not visible on mobile, skip this menu
             if (!fingerprint.view.mobile.visibility || 0 === fingerprint.view.mobile.visibleItems) {
@@ -2404,10 +2412,7 @@ export class MenuTester {
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
                             await this.testSpecificMenu(menu.menuId, 'mobile', true);
-                            
-                            // Update the unique elements test results
-                            // await this.findUniqueNavElements();
-                            
+
                             break;
                         }
                     }
