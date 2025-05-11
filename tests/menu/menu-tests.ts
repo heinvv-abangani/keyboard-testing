@@ -627,7 +627,10 @@ export class MenuTester {
             console.log(`  - Mobile visible items: ${group.fingerprint.view.mobile.visibleItems}`);
             console.log(`  - Mobile menu items: ${group.fingerprint.view.mobile.numberOfMenuItems}`);
             console.log(`  - Mobile visible menu items: ${group.fingerprint.view.mobile.numberOfVisibleMenuItems}`);
-            console.log(`  - Mobile focusable menu items: ${group.fingerprint.view.mobile.numberOfFocusableMenuItems}`);
+
+            if ( 'SimpleMenu' !== group.fingerprint.view.desktop.menuType ) {
+                console.log(`  - Mobile focusable menu items: ${group.fingerprint.view.mobile.numberOfFocusableMenuItems}`);
+            }
 
             i++;
         }
@@ -1010,10 +1013,17 @@ export class MenuTester {
                 console.log(`  - Desktop hasMouseOnlyDropdowns: ${fingerprint.view.desktop.hasMouseOnlyDropdowns}`);
                 console.log(`  - Desktop menu items: ${fingerprint.view.desktop.numberOfMenuItems}`);
                 console.log(`  - Desktop visible menu items: ${fingerprint.view.desktop.numberOfVisibleMenuItems}`);
-                console.log(`  - Desktop focusable menu items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
+
+                if ( 'SimpleMenu' !== fingerprint.view.desktop.menuType ) {
+                    console.log(`  - Desktop focusable menu items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
+                }
+
                 console.log(`  - Mobile menu items: ${fingerprint.view.mobile.numberOfMenuItems}`);
                 console.log(`  - Mobile visible menu items: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
-                console.log(`  - Mobile focusable menu items: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
+
+                if ( 'SimpleMenu' !== fingerprint.view.mobile.menuType ) {
+                    console.log(`  - Mobile focusable menu items: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
+                }
                 console.log(`  - Opens on Enter: ${fingerprint.interactionBehavior.opensOnEnter}`);
                 console.log(`  - Opens on Space: ${fingerprint.interactionBehavior.opensOnSpace}`);
                 console.log(`  - Opens on MouseOver: ${fingerprint.interactionBehavior.opensOnMouseOver}`);
@@ -1972,15 +1982,14 @@ export class MenuTester {
                     console.log(`   Desktop Items: ${fingerprint.view.desktop.visibleItems}`);
                     console.log(`   Desktop Menu Items: ${fingerprint.view.desktop.numberOfMenuItems}`);
                     console.log(`   Desktop Visible Menu Items: ${fingerprint.view.desktop.numberOfVisibleMenuItems}`);
-                    console.log(`   Desktop Focusable Menu Items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
+
 
                     if ( 'SimpleMenu' !== fingerprint.view.desktop.menuType ) {
+                        console.log(`   Desktop Focusable Menu Items: ${fingerprint.view.desktop.numberOfFocusableMenuItems}`);
                         console.log(`   Desktop Dropdowns: ${fingerprint.view.desktop.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
                             (fingerprint.view.desktop.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
                     }
                 }
-                
-                console.log( fingerprint.view.mobile );
                 
                 // Mobile visibility
                 console.log(`\n   Mobile Visibility: ${fingerprint.view.mobile.visibility ?
@@ -2002,12 +2011,12 @@ export class MenuTester {
                     console.log(`   Mobile Items: ${fingerprint.view.mobile.visibleItems}`);
                     console.log(`   Mobile Menu Items: ${fingerprint.view.mobile.numberOfMenuItems}`);
                     console.log(`   Mobile Visible Menu Items: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
-                    console.log(`   Mobile Focusable Menu Items: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
-                    console.log(`   Mobile Dropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
-                        (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
-                    console.log(`   Mobile numberOfMenuItems: ${fingerprint.view.mobile.numberOfMenuItems}`);
-                    console.log(`   Mobile numberOfVisibleMenuItems: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
-                    console.log(`   Mobile numberOfFocusableMenuItems: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
+
+                    if ( 'SimpleMenu' !== fingerprint.view.mobile.menuType ) {
+                        console.log(`   Mobile Focusable Menu Items: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
+                        console.log(`   Mobile Dropdowns: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
+                            (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
+                    }
                 }
             });
         }
