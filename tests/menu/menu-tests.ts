@@ -2130,7 +2130,8 @@ export class MenuTester {
             toggleSelector: string;
             menuId?: string;
             keyboardSuccess: boolean;
-            mobileSuccess?: boolean | null;
+            mobileHoverSuccess?: boolean | null;
+            mobileClickSuccess?: boolean | null;
             error?: string;
         }
         

@@ -32,7 +32,8 @@ export interface NavFingerprint {
     toggleDetails?: {
         toggleSelector: string;
         keyboardSuccess: boolean;
-        mobileSuccess: boolean | null;
+        mobileHoverSuccess?: boolean | null;
+        mobileClickSuccess?: boolean | null;
         error?: string;
     };
     
