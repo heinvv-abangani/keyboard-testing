@@ -2202,6 +2202,9 @@ export class MenuTester {
                         const isMenuVisible = await isElementTrulyVisible(menuElement);
                         
                         if (isMenuVisible) {
+                            // HVV: This needs to be fixed. This menu is NOT visible.
+                            await this.page.pause();
+
                             console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
                             menuBecameVisible = true;
                             
@@ -2276,12 +2279,67 @@ export class MenuTester {
                         }
                     }
                     
-                    if (!menuBecameVisible) {
+                    if ( !menuBecameVisible ) {
                         console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
-                        results.desktop.details.push({
-                            toggleSelector,
-                            keyboardSuccess: false
-                        });
+                        
+                        // Try hover
+                        await toggleElement.hover();
+                        await this.page.waitForTimeout(500);
+
+                        for ( const menu of hiddenDesktopMenus ) {
+                            const menuSelector = `[data-menu-id="${menu.menuId}"]`;
+                            const menuElement = this.page.locator(menuSelector);
+
+                            if ( await isElementTrulyVisible(menuElement) ) {
+                                console.log(`✅ Menu ${menu.menuId} became visible after hover on toggle ${toggleSelector}`);
+                                
+                                results.desktop.successful++;
+                                results.desktop.details.push({
+                                    toggleSelector,
+                                    menuId: menu.menuId,
+                                    keyboardSuccess: false,
+                                    mobileHoverSuccess: true,
+                                    mobileClickSuccess: null
+                                });
+                                menuBecameVisible = true;
+                                break;
+                            }
+                        }
+
+                        // Try click if hover failed
+                        if ( !menuBecameVisible ) {
+                            await toggleElement.click();
+                            await this.page.waitForTimeout(500);
+
+                            for ( const menu of hiddenDesktopMenus ) {
+                                const menuSelector = `[data-menu-id="${menu.menuId}"]`;
+                                const menuElement = this.page.locator(menuSelector);
+
+                                if ( await isElementTrulyVisible(menuElement) ) {
+                                    console.log(`✅ Menu ${menu.menuId} became visible after click on toggle ${toggleSelector}`);
+                                    
+                                    results.desktop.successful++;
+                                    results.desktop.details.push({
+                                        toggleSelector,
+                                        menuId: menu.menuId,
+                                        keyboardSuccess: false,
+                                        mobileHoverSuccess: false,
+                                        mobileClickSuccess: true
+                                    });
+                                    menuBecameVisible = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if ( !menuBecameVisible ) {
+                            results.desktop.details.push({
+                                toggleSelector,
+                                keyboardSuccess: false,
+                                mobileHoverSuccess: false,
+                                mobileClickSuccess: false
+                            });
+                        }
                     }
                 } catch (error) {
                     console.error(`Error testing toggle element ${toggleSelector} on desktop:`, error);
@@ -2430,12 +2488,70 @@ export class MenuTester {
                         }
                     }
                     
-                    if (!menuBecameVisible) {
-                        console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
-                        results.mobile.details.push({
-                            toggleSelector,
-                            keyboardSuccess: false
-                        });
+                    if ( !menuBecameVisible ) {
+                        console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${ toggleSelector }`);
+
+                        // Try mobile hover
+                        await this.page.pause();
+                        await toggleElement.hover();
+                        await this.page.waitForTimeout(500);
+
+                        for ( const menu of hiddenMobileMenus ) {
+                            const menuSelector = `[data-menu-id="${ menu.menuId }"]`;
+                            const menuElement = this.page.locator(menuSelector);
+
+                            if ( await isElementTrulyVisible(menuElement) ) {
+                                console.log(`✅ Menu ${ menu.menuId } became visible after hover on toggle ${ toggleSelector }`);
+
+                                results.mobile.successful++;
+                                results.mobile.details.push({
+                                    toggleSelector,
+                                    menuId: menu.menuId,
+                                    keyboardSuccess: false,
+                                    mobileHoverSuccess: true,
+                                    mobileClickSuccess: null
+                                });
+                                menuBecameVisible = true;
+                                break;
+                            }
+                        }
+
+                        // Try mobile click if hover failed
+                        if ( !menuBecameVisible ) {
+                            await toggleElement.click();
+                            await this.page.pause();
+                            await this.page.waitForTimeout(500);
+
+                            for ( const menu of hiddenMobileMenus ) {
+                                const menuSelector = `[data-menu-id="${ menu.menuId }"]`;
+                                const menuElement = this.page.locator(menuSelector);
+
+                                if ( await isElementTrulyVisible(menuElement) ) {
+                                    console.log(`✅ Menu ${ menu.menuId } became visible after click on toggle ${ toggleSelector }`);
+
+                                    results.mobile.successful++;
+                                    results.mobile.details.push({
+                                        toggleSelector,
+                                        menuId: menu.menuId,
+                                        keyboardSuccess: false,
+                                        mobileHoverSuccess: false,
+                                        mobileClickSuccess: true
+                                    });
+                                    menuBecameVisible = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // All failed
+                        if ( !menuBecameVisible ) {
+                            results.mobile.details.push({
+                                toggleSelector,
+                                keyboardSuccess: false,
+                                mobileHoverSuccess: false,
+                                mobileClickSuccess: false
+                            });
+                        }
                     }
                 } catch (error) {
                     console.error(`Error testing toggle element ${toggleSelector} on mobile:`, error);
