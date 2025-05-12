@@ -35,11 +35,34 @@ export class ToggleTester {
 
             // Construct a more readable selector
             const toggleSelector = [
+                // Accessibility attributes
                 '[aria-expanded]',
                 '[aria-controls]',
+                
+                // Common toggle class names
                 '.hamburger',
                 '.menu-toggle',
-                '.navbar-toggle'
+                '.navbar-toggle',
+                '[class*="hamburger"]',
+                '[class*="menu-toggle"]',
+                '[class*="nav-toggle"]',
+                
+                // Inline handlers and menu-related IDs
+                '[onclick*="menu"]',
+                '[id*="menu"][onclick]',
+                
+                // Button elements with menu-related classes
+                'button[class*="menu"]',
+                
+                // Icon elements (Font Awesome and similar)
+                'i[class*="fa-bars"]',
+                'i[class*="fa-times"]',
+                
+                // Elements containing menu icons
+                'button:has(i[class*="fa-bars"])',
+                'button:has(i[class*="menu"])',
+                'span:has(i[class*="fa-bars"])',
+                'span:has(i[class*="fa-times"])'
             ].map(sel => `${sel}:not([data-menu-id]):not([data-menu-id] *)`).join(', ');
 
             // Filter out toggle elements that are part of any menu

@@ -1219,6 +1219,8 @@ export class MenuTester {
                 visitedElements.set(focusedElement.elementPath, true);
             }
             
+            // HVV: Fix - The focusable count doesn't work for Bricks anymore.
+
             // If the focused element is a link, check if it's truly visible before incrementing the counter
             if (focusedElement.isLink) {
                 // Get the actual element to check visibility
@@ -2390,6 +2392,10 @@ export class MenuTester {
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
     
+                            // HVV: Continue testing here.
+                            await this.page.pause();
+
+
                             // Save which menu became visible in mobile viewport
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
                             
