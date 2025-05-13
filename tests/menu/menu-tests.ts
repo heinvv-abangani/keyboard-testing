@@ -2440,9 +2440,12 @@ export class MenuTester {
                             }
 
                             // Press Escape to close the menu
-                            await this.page.keyboard.press('Enter');
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
+
+                            // HVV: If Escape doesn't work, then I would like to close it using the 'Enter' key
+                            // await this.page.keyboard.press('Enter');
+
 
                             // Save which menu became visible in mobile viewport
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
