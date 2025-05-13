@@ -2202,9 +2202,6 @@ export class MenuTester {
                         const isMenuVisible = await isElementTrulyVisible(menuElement);
                         
                         if (isMenuVisible) {
-                            // HVV: This needs to be fixed. This menu is NOT visible.
-                            await this.page.pause();
-
                             console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
                             menuBecameVisible = true;
                             
@@ -2238,6 +2235,7 @@ export class MenuTester {
                             }
                             
                             // Press Escape to close the menu
+                            await this.page.keyboard.press('Enter');
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
                             
@@ -2283,7 +2281,7 @@ export class MenuTester {
                         console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${toggleSelector}`);
                         
                         // Try hover
-                        await toggleElement.hover();
+                        await toggleElement.hover( { timeout: 1000 } );
                         await this.page.waitForTimeout(500);
 
                         for ( const menu of hiddenDesktopMenus ) {
@@ -2302,6 +2300,8 @@ export class MenuTester {
                                     mobileClickSuccess: null
                                 });
                                 menuBecameVisible = true;
+
+                                await this.page.mouse.move(0, 0);
                                 break;
                             }
                         }
@@ -2327,6 +2327,8 @@ export class MenuTester {
                                         mobileClickSuccess: true
                                     });
                                     menuBecameVisible = true;
+
+                                    await toggleElement.click();
                                     break;
                                 }
                             }
@@ -2401,17 +2403,8 @@ export class MenuTester {
                     for (const menu of hiddenMobileMenus) {
                         const menuSelector = `[data-menu-id="${menu.menuId}"]`;
                         const menuElement = this.page.locator(menuSelector);
-                        
-                        // Check if menu is now visible
-                        const isMenuVisible = await menuElement.evaluate((el) => {
-                            const style = window.getComputedStyle(el);
-                            const display = style.display;
-                            const opacity = parseFloat(style.opacity);
-                            const isStyleVisible = (display !== 'none' && opacity > 0);
-                            const isElementVisible = el.checkVisibility?.() ?? true;
-                        
-                            return isStyleVisible && isElementVisible;
-                        });
+
+                        const isMenuVisible = await isElementTrulyVisible( menuElement );
                         
                         if (isMenuVisible) {
                             console.log(`✅ Menu ${menu.menuId} became visible after pressing Enter on toggle ${toggleSelector}`);
@@ -2445,14 +2438,11 @@ export class MenuTester {
                             } else {
                                 console.log(`\n=== WARNING: TOGGLE DETAILS NOT FOUND IN this.menuItems FOR MENU ${menu.menuId} (MOBILE) ===`);
                             }
-                            
+
                             // Press Escape to close the menu
+                            await this.page.keyboard.press('Enter');
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
-    
-                            // HVV: Continue testing here.
-                            await this.page.pause();
-
 
                             // Save which menu became visible in mobile viewport
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
@@ -2492,8 +2482,7 @@ export class MenuTester {
                         console.log(`❌ No hidden menu became visible after pressing Enter on toggle ${ toggleSelector }`);
 
                         // Try mobile hover
-                        await this.page.pause();
-                        await toggleElement.hover();
+                        await toggleElement.hover({ timeout: 1000 });
                         await this.page.waitForTimeout(500);
 
                         for ( const menu of hiddenMobileMenus ) {
@@ -2512,21 +2501,27 @@ export class MenuTester {
                                     mobileClickSuccess: null
                                 });
                                 menuBecameVisible = true;
+
+                                await this.page.mouse.move(0, 0);
                                 break;
                             }
                         }
 
                         // Try mobile click if hover failed
                         if ( !menuBecameVisible ) {
-                            await toggleElement.click();
+                            console.log('check on click');
+
+                            // HVV: Does this work on the sub toggles.
                             await this.page.pause();
+
+                            await toggleElement.click();
                             await this.page.waitForTimeout(500);
 
                             for ( const menu of hiddenMobileMenus ) {
                                 const menuSelector = `[data-menu-id="${ menu.menuId }"]`;
                                 const menuElement = this.page.locator(menuSelector);
 
-                                if ( await isElementTrulyVisible(menuElement) ) {
+                                if ( await isElementTrulyVisible(menuElement, false) ) {
                                     console.log(`✅ Menu ${ menu.menuId } became visible after click on toggle ${ toggleSelector }`);
 
                                     results.mobile.successful++;
@@ -2538,7 +2533,11 @@ export class MenuTester {
                                         mobileClickSuccess: true
                                     });
                                     menuBecameVisible = true;
+
+                                    await toggleElement.click();
                                     break;
+                                } else {
+                                    console.log(`✅ Menu ${ menu.menuId } became NOT visible after click on toggle ${ toggleSelector }`);
                                 }
                             }
                         }

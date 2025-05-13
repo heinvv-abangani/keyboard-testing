@@ -75,7 +75,7 @@ export class ToggleTester {
                     return inside;
                 });
             });
-            
+
             console.log(`Found ${toggleElements.length} toggle elements after filtering out menu elements`);
 
             const toggleDetails: any[] = [];

@@ -15,11 +15,30 @@ import { Page } from '@playwright/test';
  * 4. Use feature detection rather than framework detection
  */
 
-export async function isElementTrulyVisible(element, considerKeyboardFocus = false, debugElement = false) {
+export async function isElementTrulyVisibleBak(element, considerKeyboardFocus = false, debugElement = false) {
+    console.log( 'nnnot visible 1');
     if (!element) return false;
 
+        console.log( 'nnnot visible 2');
     const locatorElement = await element.first().elementHandle();
     if (!locatorElement) return false;
+
+    console.log( 'nnnot visible 2b');
+
+    const isOnScreen = await locatorElement.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return (
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight &&
+            rect.right > 0 &&
+            rect.left < window.innerWidth
+        );
+    });
+
+    if ( ! isOnScreen ) {
+        console.log( 'Element is not in viewport' );
+        return false;
+    }
     
     // First check if element is hidden using offsetParent (most reliable method)
     const isHiddenByOffsetParent = await locatorElement.evaluate(el => {
@@ -31,11 +50,13 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
         return false;
     }
     
+        console.log( 'nnnot visible 5');
     // Check if this is a controlled element (via aria-controls) that might be toggled
     const isControlledElement = await locatorElement.evaluate(el => {
         return el.id && document.querySelector(`[aria-controls="${el.id}"]`) !== null;
     });
-    
+
+        console.log( 'nnnot visible 6');
     // Check if this element controls other elements (like a menu item that controls a submenu)
     const isControllingElement = await locatorElement.evaluate(el => {
         // Check for explicit ARIA controls
@@ -67,14 +88,17 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
         return hasAriaControls || isLikelyMenuToggle;
     });
     
+        console.log( 'nnnot visible 7');
     if (isControlledElement && debugElement) {
         console.log(`Element is controlled via aria-controls, may be toggled by user interaction`);
     }
     
+        console.log( 'nnnot visible 8');
     if (isControllingElement && debugElement) {
         console.log(`Element controls other elements via aria-controls or aria-haspopup`);
     }
     
+        console.log( 'nnnot visible 9');
     // Menu items that control submenus should be considered visible, even if their submenus are collapsed
     if (isControllingElement) {
         const menuItemInfo = await locatorElement.evaluate(el => {
@@ -117,6 +141,7 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
         }
     }
     
+        console.log( 'nnnot visible 10');
     // Check if this is a button with aria-expanded that has a visual impact
     const isAriaExpandedButton = await locatorElement.evaluate(el => {
         // Only check buttons with aria-expanded
@@ -545,6 +570,64 @@ export async function isElementTrulyVisible(element, considerKeyboardFocus = fal
 
     return !isHiddenByCSS;
 }
+
+export async function isElementTrulyVisible( element, considerKeyboardFocus = false, debugElement = false ) {
+	const isVisible = await element.evaluate( ( el ) => {
+		if ( !el.isConnected ) return false;
+
+		const style = window.getComputedStyle( el );
+
+		if (
+			style.display === 'none' ||
+			style.visibility === 'hidden' ||
+			style.opacity === '0'
+		) {
+			return false;
+		}
+
+		const rect = el.getBoundingClientRect();
+
+		if ( rect.width === 0 || rect.height === 0 ) {
+			return false;
+		}
+
+		const inViewport =
+			rect.bottom > 0 &&
+			rect.top < window.innerHeight &&
+			rect.right > 0 &&
+			rect.left < window.innerWidth;
+
+		return inViewport;
+	} );
+
+	if ( !isVisible ) {
+		if ( debugElement ) {
+			console.log( 'Element is not truly visible' );
+		}
+		return false;
+	}
+
+	// Optionally check focusability if needed
+	if ( considerKeyboardFocus ) {
+		const isFocusable = await element.evaluate( ( el ) => {
+			if ( typeof el.matches !== 'function' ) return false;
+
+			return el.matches(
+				'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex]:not([tabindex="-1"]), [contenteditable]'
+			);
+		} );
+
+		if ( !isFocusable ) {
+			if ( debugElement ) {
+				console.log( 'Element is visible but not focusable' );
+			}
+			return false;
+		}
+	}
+
+	return true;
+}
+
 
 export async function goToUrl( page: Page, url: string ) {
     await page.route('**/*', (route, request) => {
