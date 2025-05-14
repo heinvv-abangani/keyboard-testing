@@ -2235,9 +2235,13 @@ export class MenuTester {
                             }
                             
                             // Press Escape to close the menu
-                            await this.page.keyboard.press('Enter');
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
+
+                            if ( await isElementTrulyVisible( menuElement ) ) {
+                                await this.page.keyboard.press('Enter');
+                                await this.page.waitForTimeout(300);
+                            }
                             
                             // Save which menu became visible in desktop viewport
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN DESKTOP VIEWPORT ===`);
@@ -2308,7 +2312,12 @@ export class MenuTester {
 
                         // Try click if hover failed
                         if ( !menuBecameVisible ) {
-                            await toggleElement.click();
+                            try {
+                                await toggleElement.click({ timeout: 1000});
+                            } catch (error) {
+                                console.log(`Warning: Could not click toggle element ${toggleSelector}: ${error.message}`);
+                                // Continue execution despite the error
+                            }
                             await this.page.waitForTimeout(500);
 
                             for ( const menu of hiddenDesktopMenus ) {
@@ -2328,7 +2337,13 @@ export class MenuTester {
                                     });
                                     menuBecameVisible = true;
 
-                                    await toggleElement.click();
+                                    
+                                    try {
+                                        await toggleElement.click({ timeout: 1000});
+                                    } catch (error) {
+                                        console.log(`Warning: Could not click toggle element ${toggleSelector} to close menu: ${error.message}`);
+                                        // Continue execution despite the error
+                                    }
                                     break;
                                 }
                             }
@@ -2443,9 +2458,10 @@ export class MenuTester {
                             await this.page.keyboard.press('Escape');
                             await this.page.waitForTimeout(300);
 
-                            // HVV: If Escape doesn't work, then I would like to close it using the 'Enter' key
-                            // await this.page.keyboard.press('Enter');
-
+                            if ( await isElementTrulyVisible( menuElement ) ) {
+                                await this.page.keyboard.press('Enter');
+                                 await this.page.waitForTimeout(300);
+                            }
 
                             // Save which menu became visible in mobile viewport
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
@@ -2517,7 +2533,12 @@ export class MenuTester {
                             // HVV: Does this work on the sub toggles.
                             await this.page.pause();
 
-                            await toggleElement.click();
+                            try {
+                                await toggleElement.click({ timeout: 1000});
+                            } catch (error) {
+                                console.log(`Warning: Could not click toggle element ${toggleSelector}: ${error.message}`);
+                                // Continue execution despite the error
+                            }
                             await this.page.waitForTimeout(500);
 
                             for ( const menu of hiddenMobileMenus ) {
@@ -2537,7 +2558,13 @@ export class MenuTester {
                                     });
                                     menuBecameVisible = true;
 
-                                    await toggleElement.click();
+                                    
+                                    try {
+                                        await toggleElement.click({ timeout: 1000});
+                                    } catch (error) {
+                                        console.log(`Warning: Could not click toggle element ${toggleSelector} to close menu: ${error.message}`);
+                                        // Continue execution despite the error
+                                    }
                                     break;
                                 } else {
                                     console.log(`✅ Menu ${ menu.menuId } became NOT visible after click on toggle ${ toggleSelector }`);
@@ -2588,7 +2615,10 @@ export class MenuTester {
                 console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
             });
         }
-        
+
+        console.log( results.mobile );
+        console.log( 'success check', results.mobile.successful);
+
         if (results.mobile.successful > 0) {
             console.log(`\nMobile Toggle Results:`);
             console.log(`  - Tested: ${results.mobile.tested}`);
@@ -2610,6 +2640,8 @@ export class MenuTester {
                     menuId: group.menuId,
                     toggleDetails: group.fingerprint.toggleDetails
                 }));
+
+                console.log( 'menusWithToggleDetails', menusWithToggleDetails);
             
             if (menusWithToggleDetails.length > 0) {
                 console.log(`Found ${menusWithToggleDetails.length} menus with toggle details:`);
