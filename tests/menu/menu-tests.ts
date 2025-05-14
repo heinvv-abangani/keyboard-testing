@@ -1900,6 +1900,9 @@ export class MenuTester {
             if (isToggleBased) {
                 console.log(`Mobile visibility after toggle activation: ✅ Visible`);
                 console.log(`Mobile items after toggle activation: ${results.mobileVisibleMenuItems || 'Unknown'}`);
+
+
+                // HVV: This information seems incorrect.
                 console.log(`Mobile Dropdowns after toggle activation: ${fingerprint.view.mobile.hasKeyboardDropdowns ? '✅ Keyboard Accessible' :
                     (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
             }
@@ -2031,6 +2034,8 @@ export class MenuTester {
                         (fingerprint.view.mobile.hasMouseOnlyDropdowns ? '⚠️ Mouse Only' : '❌ None')}`);
                     console.log(`   Mobile numberOfMenuItems: ${fingerprint.view.mobile.numberOfMenuItems}`);
                     console.log(`   Mobile numberOfVisibleMenuItems: ${fingerprint.view.mobile.numberOfVisibleMenuItems}`);
+
+                    // HVV: This information seems incorrect.
                     console.log(`   Mobile numberOfFocusableMenuItems: ${fingerprint.view.mobile.numberOfFocusableMenuItems}`);
                 }
                 // Show regular information if the menu is currently visible and not toggle-based
@@ -2617,7 +2622,7 @@ export class MenuTester {
 
                                     // Update the menu type to indicate it's toggle-based
                                     await this.updateMenuTypeToToggleBased(menuElement.first(), menu, 'mobile');
-                                    
+
                                     break;
                                 } else {
                                     console.log(`✅ Menu ${ menu.menuId } became NOT visible after click on toggle ${ toggleSelector }`);
