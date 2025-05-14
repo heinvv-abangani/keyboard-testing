@@ -1993,6 +1993,8 @@ export class MenuTester {
                 // Display toggle details if they exist
                 if (fingerprint.toggleDetails) {
                     console.log(`   Toggle Details: ${fingerprint.toggleDetails.keyboardSuccess ? '✅ Success' : '❌ Failed'}`);
+                    console.log(`   Toggle Mobile Hover Details: ${fingerprint.toggleDetails.mouseHoverSuccess ? '✅ Success' : '❌ Failed'}`);
+                    console.log(`   Toggle Mobile Click Details: ${fingerprint.toggleDetails.mouseClickSuccess ? '✅ Success' : '❌ Failed'}`);
                     console.log(`   Toggle Selector: ${fingerprint.toggleDetails.toggleSelector}`);
                     if (fingerprint.toggleDetails.error) {
                         console.log(`   Toggle Error: ${fingerprint.toggleDetails.error}`);
@@ -2132,8 +2134,8 @@ export class MenuTester {
             toggleSelector: string;
             menuId?: string;
             keyboardSuccess: boolean;
-            mobileHoverSuccess?: boolean | null;
-            mobileClickSuccess?: boolean | null;
+            mouseHoverSuccess?: boolean | null;
+            mouseClickSuccess?: boolean | null;
             error?: string;
         }
         
@@ -2300,8 +2302,8 @@ export class MenuTester {
                                     toggleSelector,
                                     menuId: menu.menuId,
                                     keyboardSuccess: false,
-                                    mobileHoverSuccess: true,
-                                    mobileClickSuccess: null
+                                    mouseHoverSuccess: true,
+                                    mouseClickSuccess: null
                                 });
                                 menuBecameVisible = true;
 
@@ -2332,8 +2334,8 @@ export class MenuTester {
                                         toggleSelector,
                                         menuId: menu.menuId,
                                         keyboardSuccess: false,
-                                        mobileHoverSuccess: false,
-                                        mobileClickSuccess: true
+                                        mouseHoverSuccess: false,
+                                        mouseClickSuccess: true
                                     });
                                     menuBecameVisible = true;
 
@@ -2353,8 +2355,8 @@ export class MenuTester {
                             results.desktop.details.push({
                                 toggleSelector,
                                 keyboardSuccess: false,
-                                mobileHoverSuccess: false,
-                                mobileClickSuccess: false
+                                mouseHoverSuccess: false,
+                                mouseClickSuccess: false
                             });
                         }
                     }
@@ -2516,8 +2518,8 @@ export class MenuTester {
                                     toggleSelector,
                                     menuId: menu.menuId,
                                     keyboardSuccess: false,
-                                    mobileHoverSuccess: true,
-                                    mobileClickSuccess: null
+                                    mouseHoverSuccess: true,
+                                    mouseClickSuccess: null
                                 });
                                 menuBecameVisible = true;
 
@@ -2553,8 +2555,8 @@ export class MenuTester {
                                         toggleSelector,
                                         menuId: menu.menuId,
                                         keyboardSuccess: false,
-                                        mobileHoverSuccess: false,
-                                        mobileClickSuccess: true
+                                        mouseHoverSuccess: false,
+                                        mouseClickSuccess: true
                                     });
                                     menuBecameVisible = true;
 
@@ -2577,8 +2579,8 @@ export class MenuTester {
                             results.mobile.details.push({
                                 toggleSelector,
                                 keyboardSuccess: false,
-                                mobileHoverSuccess: false,
-                                mobileClickSuccess: false
+                                mouseHoverSuccess: false,
+                                mouseClickSuccess: false
                             });
                         }
                     }
@@ -2634,15 +2636,30 @@ export class MenuTester {
         // Log the entire this.menuItems object to verify all toggle details
         console.log(`\n=== FINAL this.menuItems WITH TOGGLE DETAILS ===`);
         if (this.menuItems) {
-            const menusWithToggleDetails = this.menuItems.uniqueGroups
-                .filter(group => group.fingerprint.toggleDetails)
-                .map(group => ({
-                    menuId: group.menuId,
-                    toggleDetails: group.fingerprint.toggleDetails
-                }));
+            // console.log('uniqueGroups:', this.menuItems.uniqueGroups);
 
-                console.log( 'menusWithToggleDetails', menusWithToggleDetails);
-            
+            const menusWithToggleDetails = this.menuItems.uniqueGroups
+                .map((group, index) => {
+                    // console.log(`Group ${index}:`, group);
+                    // console.log(`Group ${index} fingerprint:`, group.fingerprint);
+                    console.log(`Group ${index} toggleDetails:`, group.fingerprint?.toggleDetails);
+
+                    return group;
+                })
+                .filter((group, index) => {
+                    const hasToggle = !!group.fingerprint?.toggleDetails;
+                    // console.log(`Group ${index} has toggleDetails?`, hasToggle);
+                    return hasToggle;
+                })
+                .map((group, index) => {
+                    // console.log(`Group ${index} passed filter: toggleDetails =`, group.fingerprint.toggleDetails);
+                    return {
+                        menuId: group.menuId,
+                        toggleDetails: group.fingerprint.toggleDetails
+                    };
+                });
+
+            console.log('menusWithToggleDetails:', menusWithToggleDetails);
             if (menusWithToggleDetails.length > 0) {
                 console.log(`Found ${menusWithToggleDetails.length} menus with toggle details:`);
                 menusWithToggleDetails.forEach((menu, index) => {
