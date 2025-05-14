@@ -2058,6 +2058,45 @@ export class MenuTester {
     }
     
     /**
+     * Updates the menu type to indicate it's toggle-based
+     * @param menuElement The Locator for the menu element
+     * @param menu The menu object containing fingerprint data
+     * @param viewportType The viewport type to update (desktop or mobile)
+     */
+    private async updateMenuTypeToToggleBased(menuElement: Locator, menu: NavGroup, viewportType: 'desktop' | 'mobile' = 'desktop'): Promise<void> {
+        // Use the provided locator directly
+        const locatorToUse = menuElement;
+        
+        await locatorToUse.evaluate((el, hasDropdowns) => {
+            // Update the menu type based on whether it has dropdowns
+            const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
+            el.setAttribute('data-menu-type', newType);
+            
+            // Also update the fingerprint directly in the DOM
+            const menuId = el.getAttribute('data-menu-id');
+            if (menuId) {
+                // Store the menu type in a data attribute for later retrieval
+                el.setAttribute('data-desktop-menu-type', newType);
+                el.setAttribute('data-mobile-menu-type', newType);
+            }
+            
+            console.log(`Updated menu type to: ${newType}`);
+        }, menu.fingerprint.hasDropdowns);
+        
+        // Update the fingerprint object in memory to match the DOM attribute
+        // Note: Avoid hardcoded references or special cases - this test should be universal for any website
+        const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
+        console.log(`Updating menu ${menu.menuId} type to ${newType}`);
+        
+        // Update the appropriate viewport type
+        if (viewportType === 'mobile') {
+            menu.fingerprint.view.mobile.menuType = newType;
+        } else {
+            menu.fingerprint.view.desktop.menuType = newType;
+        }
+    }
+    
+    /**
      * Test toggle elements for menus that aren't visible
      * @returns Test results
      */
@@ -2251,27 +2290,7 @@ export class MenuTester {
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN DESKTOP VIEWPORT ===`);
                             
                             // Update the menu type to indicate it's toggle-based
-                            await menuElement.evaluate((el, hasDropdowns) => {
-                                // Update the menu type based on whether it has dropdowns
-                                const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
-                                el.setAttribute('data-menu-type', newType);
-                                
-                                // Also update the fingerprint directly in the DOM
-                                const menuId = el.getAttribute('data-menu-id');
-                                if (menuId) {
-                                    // Store the menu type in a data attribute for later retrieval
-                                    el.setAttribute('data-desktop-menu-type', newType);
-                                    el.setAttribute('data-mobile-menu-type', newType);
-                                }
-                                
-                                console.log(`Updated menu type to: ${newType}`);
-                            }, menu.fingerprint.hasDropdowns);
-                            
-                            // Update the fingerprint object in memory to match the DOM attribute
-                            // Note: Avoid hardcoded references or special cases - this test should be universal for any website
-                            const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
-                            console.log(`Updating menu ${menu.menuId} type to ${newType}`);
-                            menu.fingerprint.view.desktop.menuType = newType;
+                            await this.updateMenuTypeToToggleBased(menuElement, menu);
                             
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
@@ -2318,6 +2337,9 @@ export class MenuTester {
                                 menuBecameVisible = true;
 
                                 await this.page.mouse.move(0, 0);
+
+                                // Update the menu type to indicate it's toggle-based
+                                await this.updateMenuTypeToToggleBased(menuElement, menu);
                                 break;
                             }
                         }
@@ -2364,6 +2386,9 @@ export class MenuTester {
                                         console.log(`Warning: Could not click toggle element ${toggleSelector} to close menu: ${error.message}`);
                                         // Continue execution despite the error
                                     }
+
+                                    // Update the menu type to indicate it's toggle-based
+                                    await this.updateMenuTypeToToggleBased(menuElement, menu);
                                     break;
                                 }
                             }
@@ -2497,27 +2522,7 @@ export class MenuTester {
                             console.log(`\n=== MENU ${menu.menuId} BECAME VISIBLE IN MOBILE VIEWPORT ===`);
                             
                             // Update the menu type to indicate it's toggle-based
-                            await menuElement.first().evaluate((el, hasDropdowns) => {
-                                // Update the menu type based on whether it has dropdowns
-                                const newType = hasDropdowns ? 'ToggleBasedDropdownMenu' : 'ToggleBasedSimpleMenu';
-                                el.setAttribute('data-menu-type', newType);
-                                
-                                // Also update the fingerprint directly in the DOM
-                                const menuId = el.getAttribute('data-menu-id');
-                                if (menuId) {
-                                    // Store the menu type in a data attribute for later retrieval
-                                    el.setAttribute('data-desktop-menu-type', newType);
-                                    el.setAttribute('data-mobile-menu-type', newType);
-                                }
-                                
-                                console.log(`Updated menu type to: ${newType}`);
-                            }, menu.fingerprint.hasDropdowns);
-                            
-                            // Update the fingerprint object in memory to match the DOM attribute
-                            // Note: Avoid hardcoded references or special cases - this test should be universal for any website
-                            const newType = menu.fingerprint.hasDropdowns ? MenuType.ToggleBasedDropdownMenu : MenuType.ToggleBasedSimpleMenu;
-                            console.log(`Updating menu ${menu.menuId} type to ${newType}`);
-                            menu.fingerprint.view.mobile.menuType = newType;
+                            await this.updateMenuTypeToToggleBased(menuElement.first(), menu, 'mobile');
                             
                             // Run the full menu test for this newly visible menu
                             console.log(`\n=== RUNNING FULL MENU TEST FOR NEWLY VISIBLE MENU ${menu.menuId} ===`);
@@ -2560,6 +2565,8 @@ export class MenuTester {
                                 menuBecameVisible = true;
 
                                 await this.page.mouse.move(0, 0);
+                                // Update the menu type to indicate it's toggle-based
+                                await this.updateMenuTypeToToggleBased(menuElement.first(), menu, 'mobile');
                                 break;
                             }
                         }
@@ -2607,6 +2614,10 @@ export class MenuTester {
                                         console.log(`Warning: Could not click toggle element ${toggleSelector} to close menu: ${error.message}`);
                                         // Continue execution despite the error
                                     }
+
+                                    // Update the menu type to indicate it's toggle-based
+                                    await this.updateMenuTypeToToggleBased(menuElement.first(), menu, 'mobile');
+                                    
                                     break;
                                 } else {
                                     console.log(`✅ Menu ${ menu.menuId } became NOT visible after click on toggle ${ toggleSelector }`);
