@@ -566,6 +566,69 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
             } catch (error) {
                 console.log(`⚠️ Error during hover test: ${error.message}`);
             }
+            
+            // Try clicking the menu item (for menus that toggle on click)
+            try {
+                console.log(`\n=== TESTING CLICK INTERACTION FOR "${text.trim()}" ===`);
+                
+                // Check if the menu item has children
+                const hasChildren = await menuItem.locator('ul').count() > 0;
+                console.log(`DEBUG: Menu item has children: ${hasChildren}`);
+                
+                if (hasChildren) {
+                    console.log(`DEBUG: Menu item has children, testing click interaction`);
+                    
+                    // Get more details about the menu item for debugging
+                    const menuItemDetails = await menuItem.evaluate(el => {
+                        return {
+                            tagName: el.tagName,
+                            id: el.id,
+                            classes: el.className,
+                            hasChildren: !!el.querySelector('ul'),
+                            childrenCount: el.querySelectorAll('ul > li').length
+                        };
+                    });
+                    console.log(`DEBUG: Menu item details:`, JSON.stringify(menuItemDetails));
+                    
+                    // Get initial visibility state of the dropdown
+                    const initialDropdownVisible = await menuItem.locator('ul').isVisible();
+                    console.log(`DEBUG: Initial dropdown visibility: ${initialDropdownVisible}`);
+                    
+                    // Click the menu item
+                    console.log(`DEBUG: Clicking menu item...`);
+                    await menuItem.click();
+                    console.log(`DEBUG: Click executed`);
+                    await page.waitForTimeout(500); // Wait for any animations
+                    
+                    // Check if dropdown visibility changed after click
+                    const dropdownVisibleAfterClick = await menuItem.locator('ul').isVisible();
+                    console.log(`DEBUG: Dropdown visibility after click: ${dropdownVisibleAfterClick}`);
+                    
+                    if (dropdownVisibleAfterClick !== initialDropdownVisible) {
+                        console.log(`✅ Dropdown visibility changed after click (${initialDropdownVisible} → ${dropdownVisibleAfterClick})`);
+                        
+                        return {
+                            isAccessible: true,
+                            opensOnMouseOver: false,
+                            opensOnClick: true,
+                            closesOnClickOutside: false, // Would need additional testing
+                            debug: {
+                                hasChildren,
+                                menuItemDetails,
+                                initialDropdownVisible,
+                                dropdownVisibleAfterClick,
+                            }
+                        };
+                    } else {
+                        console.log(`❌ Dropdown visibility did not change after click (remained ${initialDropdownVisible})`);
+                    }
+                } else {
+                    console.log(`DEBUG: Menu item does not have children, skipping click test`);
+                }
+            } catch (error) {
+                console.log(`⚠️ Error during click test: ${error.message}`);
+                console.log(`⚠️ Error stack: ${error.stack}`);
+            }
         }
         
         console.log(`Menu item does not have aria-expanded attribute`);
@@ -586,7 +649,13 @@ export async function testMouseInteractions(page: Page, menuItem: Locator): Prom
         }
     }
     
-    return defaultResult;
+    // Include any debug information we've collected
+    return {
+        ...defaultResult,
+        debug: {
+            error: "No dropdown interaction detected"
+        }
+    };
 }
 
 /**
