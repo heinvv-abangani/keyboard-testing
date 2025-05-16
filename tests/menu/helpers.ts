@@ -145,12 +145,3 @@ export async function testKeyboardFocusability(page: Page, links: Locator) {
         keyboardFocusableItems: focusableCount
     };
 }
-
-/**
- * Test dropdown keyboard accessibility
- */
-
-/**
- * Test mouse interactions with menu items
- */
-

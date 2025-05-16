@@ -571,8 +571,23 @@ export async function isElementTrulyVisibleBak(element, considerKeyboardFocus = 
     return !isHiddenByCSS;
 }
 
-export async function isElementTrulyVisible( element, considerKeyboardFocus = false, debugElement = false ) {
-	const isVisible = await element.evaluate( ( el ) => {
+export async function isElementTrulyVisibleSingle( element, considerKeyboardFocus = false, debugElement = false ) {
+	console.log( element );
+    console.log( 'test visible vis' );
+
+     const isCheckVisibility = await element.evaluate( ( el ) => {
+		if ( !el.isConnected ) return false;
+
+		return el.checkVisibility();
+    } );
+
+    console.log( 'isCheckVisibility', isCheckVisibility);
+
+    if ( !isCheckVisibility) {
+        return false;
+    }
+
+    const isVisible = await element.evaluate( ( el ) => {
 		if ( !el.isConnected ) return false;
 
 		const style = window.getComputedStyle( el );
@@ -585,6 +600,16 @@ export async function isElementTrulyVisible( element, considerKeyboardFocus = fa
 			return false;
 		}
 
+        return true;
+    } );
+
+    console.log( 'isVisible', isVisible);
+
+    if ( !isVisible) {
+        return false;
+    }
+
+    const isInViewport = await element.evaluate( ( el ) => {
 		const rect = el.getBoundingClientRect();
 
 		if ( rect.width === 0 || rect.height === 0 ) {
@@ -600,12 +625,11 @@ export async function isElementTrulyVisible( element, considerKeyboardFocus = fa
 		return inViewport;
 	} );
 
-	if ( !isVisible ) {
-		if ( debugElement ) {
-			console.log( 'Element is not truly visible' );
-		}
-		return false;
-	}
+    console.log( 'isInViewport', isInViewport)
+
+    if ( !isInViewport) {
+        return false;
+    }
 
 	// Optionally check focusability if needed
 	if ( considerKeyboardFocus ) {
@@ -627,6 +651,89 @@ export async function isElementTrulyVisible( element, considerKeyboardFocus = fa
 
 	return true;
 }
+
+export async function isElementTrulyVisible( element, considerKeyboardFocus = false, debugElement = false ) {
+	const result = await element.evaluate( ( el, considerKeyboardFocus ) => {
+
+		function isVisibleRecursive( node ) {
+			if ( !node ) return true; // reached top without failures
+
+			if ( !node.isConnected ) return false;
+
+			// checkVisibility API (if supported)
+			if ( typeof node.checkVisibility === 'function' && !node.checkVisibility() ) {
+				return false;
+			}
+
+			const style = window.getComputedStyle( node );
+
+			if (
+				style.display === 'none' ||
+				style.visibility === 'hidden' ||
+				style.opacity === '0'
+			) {
+				return false;
+			}
+
+            const sizeZero =
+                ( parseFloat( style.height ) === 0 || parseFloat( style.maxHeight ) === 0 ) ||
+                ( parseFloat( style.width ) === 0 || parseFloat( style.maxWidth ) === 0 );
+
+            if ( sizeZero && style.overflow === 'hidden' ) {
+                return false;
+            }
+
+            const rect = node.getBoundingClientRect();
+            if ( rect.width === 0 || rect.height === 0 ) {
+                return false;
+            }
+
+			// You could skip viewport check for parent nodes,
+			// but you *do* want it for the target element.
+			if ( node === el ) {
+				const rect = node.getBoundingClientRect();
+				if (
+					rect.width === 0 ||
+					rect.height === 0 ||
+					rect.bottom <= 0 ||
+					rect.top >= window.innerHeight ||
+					rect.right <= 0 ||
+					rect.left >= window.innerWidth
+				) {
+					return false;
+				}
+			}
+
+			return isVisibleRecursive( node.parentElement );
+		}
+
+		if ( !isVisibleRecursive( el ) ) {
+			return false;
+		}
+
+		// Final check: keyboard focusability, only on the target element
+		if ( considerKeyboardFocus ) {
+			if ( typeof el.matches !== 'function' ) return false;
+
+			const focusable = el.matches(
+				'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex]:not([tabindex="-1"]), [contenteditable]'
+			);
+
+			if ( !focusable ) {
+				return false;
+			}
+		}
+
+		return true;
+	}, considerKeyboardFocus );
+
+	if ( debugElement ) {
+		console.log( 'isElementTrulyVisible (recursive):', result );
+	}
+
+	return result;
+}
+
 
 
 export async function goToUrl( page: Page, url: string ) {

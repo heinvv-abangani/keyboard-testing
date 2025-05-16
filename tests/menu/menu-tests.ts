@@ -125,6 +125,35 @@ export class MenuTester {
             });
 
             for (const nav of navElements) {
+                // Define isElementTrulyVisible function in the browser context
+                const isElementTrulyVisible = (element: Element) => {
+                    if (!element.isConnected) return false;
+
+                    const style = window.getComputedStyle(element);
+
+                    if (
+                        style.display === 'none' ||
+                        style.visibility === 'hidden' ||
+                        style.opacity === '0'
+                    ) {
+                        return false;
+                    }
+
+                    const rect = element.getBoundingClientRect();
+
+                    if (rect.width === 0 || rect.height === 0) {
+                        return false;
+                    }
+
+                    const inViewport =
+                        rect.bottom > 0 &&
+                        rect.top < window.innerHeight &&
+                        rect.right > 0 &&
+                        rect.left < window.innerWidth;
+
+                    return inViewport;
+                };
+
                 const isVisible = (nav: Element) => {
                     const style = window.getComputedStyle(nav);
                     const display = style.display;
@@ -155,13 +184,13 @@ export class MenuTester {
                         desktop: {
                             menuType: determineMenuType(nav, true) as MenuType,
                             visibility: isVisible(nav),
-                            visibleItems: links.filter(link => (link as HTMLElement).checkVisibility).length,
+                            visibleItems: links.filter(link => isElementTrulyVisible(link)).length,
                             hasKeyboardDropdowns: null,
                             hasMouseOnlyDropdowns: null,
                             display: window.getComputedStyle(nav).display,
                             position: window.getComputedStyle(nav).position,
                             numberOfMenuItems: links.length,
-                            numberOfVisibleMenuItems: links.filter(link => (link as HTMLElement).checkVisibility).length,
+                            numberOfVisibleMenuItems: links.filter(link => isElementTrulyVisible(link)).length,
                             numberOfFocusableMenuItems: null
                         },
                         mobile: {
@@ -1979,17 +2008,6 @@ export class MenuTester {
                 
                 // Test keyboard accessibility
                 const keyboardResult = await this.testDropdownKeyboardAccessibility(menu, dropdownItem, title);
-
-                console.log( 'keyboardResult', keyboardResult);
-                
-                // keyboardResult {
-                //     isAccessible: true,
-                //     opensOnEnter: true,
-                //     opensOnSpace: false,
-                //     closesOnEscape: false
-                // }
-
-                // HVV: Problem, the LabelVier dropdowns don't 'opensOnEnter'.
 
                 if (keyboardResult.isAccessible) {
                     results.keyboardAccessibleDropdowns++;
