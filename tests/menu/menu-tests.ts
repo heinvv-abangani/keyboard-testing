@@ -1165,6 +1165,10 @@ export class MenuTester {
 
             // Press Tab to move to the next element
             await menu.page().keyboard.press('Tab');
+
+            if ( 1 === tabCount ) {
+                await menu.page().keyboard.press('Shift+Tab');
+            }
             
             // Add a longer delay to ensure the focus has fully moved
             await menu.page().waitForTimeout(100);
@@ -1251,6 +1255,8 @@ export class MenuTester {
             if (focusedElement.isLink) {
                 // Get the actual element to check visibility
                 const element = await this.page.locator(focusedElement.elementPath).first();
+
+                const log = await element.evaluate( (el) => console.log( el.textContent));
                 
                 // Use the comprehensive isElementTrulyVisible function
                 const isVisible = await isElementTrulyVisible(element);
