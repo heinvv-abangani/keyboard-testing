@@ -22,7 +22,7 @@ import { testMenuScreenReaderAccessibility } from './screen-reader-test.ts';
 // List of websites to test
 const testWebsites = [
     // 'https://academy.bricksbuilder.io/article/menu-builder/',
-    'https://labelvier.nl/',
+    // 'https://labelvier.nl/',
     // 'https://spankrachtontwerpers.nl',
     // 'https://ghost.org/',
     // 'https://www.framer.com/',
@@ -37,6 +37,7 @@ const testWebsites = [
     // 'https://daveden.co.uk/',
     // 'https://equalizedigital.com/',
     // 'https://getplate.com',
+    'https://annebovelett.eu/',
 ];
 
 // Run tests for each website in the list
