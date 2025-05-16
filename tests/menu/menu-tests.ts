@@ -2303,8 +2303,6 @@ export class MenuTester {
                 // Display toggle details if they exist
                 if (fingerprint.toggleDetails) {
                     console.log(`   Toggle Details: ${fingerprint.toggleDetails.keyboardSuccess ? '✅ Success' : '❌ Failed'}`);
-                    console.log(`   Toggle Mobile Hover Details: ${fingerprint.toggleDetails.mouseHoverSuccess ? '✅ Success' : '❌ Failed'}`);
-                    console.log(`   Toggle Mobile Click Details: ${fingerprint.toggleDetails.mouseClickSuccess ? '✅ Success' : '❌ Failed'}`);
                     console.log(`   Toggle Selector: ${fingerprint.toggleDetails.toggleSelector}`);
                     if (fingerprint.toggleDetails.error) {
                         console.log(`   Toggle Error: ${fingerprint.toggleDetails.error}`);
@@ -2485,8 +2483,6 @@ export class MenuTester {
             toggleSelector: string;
             menuId?: string;
             keyboardSuccess: boolean;
-            mouseHoverSuccess?: boolean | null;
-            mouseClickSuccess?: boolean | null;
             error?: string;
         }
         
@@ -2570,16 +2566,12 @@ export class MenuTester {
                             menu.fingerprint.toggleDetails = {
                                 toggleSelector,
                                 keyboardSuccess: true,
-                                mouseHoverSuccess: false,
-                                mouseClickSuccess: false,
                             };
                             
                             // Log to verify the toggle details have been added to the menu's fingerprint
                             console.log(`\n=== TOGGLE DETAILS ADDED TO MENU ${menu.menuId} FINGERPRINT ===`);
                             console.log(`Toggle Selector: ${menu.fingerprint.toggleDetails.toggleSelector}`);
                             console.log(`Keyboard Success: ${menu.fingerprint.toggleDetails.keyboardSuccess}`);
-                            console.log(`Mouse Hover Success: ${menu.fingerprint.toggleDetails.mouseHoverSuccess}`);
-                            console.log(`Mouse Click Success: ${menu.fingerprint.toggleDetails.mouseClickSuccess}`);
                             
                             // Verify the toggle details are in this.menuItems
                             const menuInItems = this.getMenuFingerprint(menu.menuId);
@@ -2587,8 +2579,6 @@ export class MenuTester {
                                 console.log(`\n=== VERIFIED TOGGLE DETAILS IN this.menuItems FOR MENU ${menu.menuId} ===`);
                                 console.log(`Toggle Selector in this.menuItems: ${menuInItems.fingerprint.toggleDetails.toggleSelector}`);
                                 console.log(`Success in this.menuItems: ${menuInItems.fingerprint.toggleDetails.keyboardSuccess}`);
-                                console.log(`Mouse Hover Success: ${menuInItems.fingerprint.toggleDetails.mouseHoverSuccess}`);
-                                console.log(`Mouse Click Success: ${menuInItems.fingerprint.toggleDetails.mouseClickSuccess}`);
                             } else {
                                 console.log(`\n=== WARNING: TOGGLE DETAILS NOT FOUND IN this.menuItems FOR MENU ${menu.menuId} ===`);
                             }
@@ -2624,8 +2614,6 @@ export class MenuTester {
                     results.desktop.details.push({
                         toggleSelector,
                         keyboardSuccess: false,
-                        mouseHoverSuccess: false,
-                        mouseClickSuccess: false,
                         error: error.message
                     });
                 }
@@ -2694,24 +2682,18 @@ export class MenuTester {
                                 toggleSelector,
                                 menuId: menu.menuId,
                                 keyboardSuccess: true,
-                                mouseHoverSuccess: false,
-                                mouseClickSuccess: false,
                             });
                             
                             // Also store toggle details in the menu's fingerprint
                             menu.fingerprint.toggleDetails = {
                                 toggleSelector,
                                 keyboardSuccess: true,
-                                mouseHoverSuccess: false,
-                                mouseClickSuccess: false,
                             };
                             
                             // Log to verify the toggle details have been added to the menu's fingerprint
                             console.log(`\n=== TOGGLE DETAILS ADDED TO MENU ${menu.menuId} FINGERPRINT (MOBILE) ===`);
                             console.log(`Toggle Selector: ${menu.fingerprint.toggleDetails.toggleSelector}`);
                             console.log(`Success: ${menu.fingerprint.toggleDetails.keyboardSuccess}`);
-                            console.log(`Mouse Hover Success: ${menu.fingerprint.toggleDetails.mouseHoverSuccess}`);
-                            console.log(`Mouse Click Success: ${menu.fingerprint.toggleDetails.mouseClickSuccess}`);
                             
                             // Verify the toggle details are in this.menuItems
                             const menuInItems = this.getMenuFingerprint(menu.menuId);
@@ -2719,8 +2701,6 @@ export class MenuTester {
                                 console.log(`\n=== VERIFIED TOGGLE DETAILS IN this.menuItems FOR MENU ${menu.menuId} (MOBILE) ===`);
                                 console.log(`Toggle Selector in this.menuItems: ${menuInItems.fingerprint.toggleDetails.toggleSelector}`);
                                 console.log(`Success in this.menuItems: ${menuInItems.fingerprint.toggleDetails.keyboardSuccess}`);
-                                console.log(`Mouse Hover Success in this.menuItems: ${menuInItems.fingerprint.toggleDetails.mouseHoverSuccess}`);
-                                console.log(`Mouse Click Success in this.menuItems: ${menuInItems.fingerprint.toggleDetails.mouseClickSuccess}`);
                             } else {
                                 console.log(`\n=== WARNING: TOGGLE DETAILS NOT FOUND IN this.menuItems FOR MENU ${menu.menuId} (MOBILE) ===`);
                             }
@@ -2752,8 +2732,6 @@ export class MenuTester {
                     results.mobile.details.push({
                         toggleSelector,
                         keyboardSuccess: false,
-                        mouseHoverSuccess: false,
-                        mouseClickSuccess: false,
                         error: error.message
                     });
                 }
@@ -2781,13 +2759,9 @@ export class MenuTester {
 
             results.desktop.details.forEach((detail, index) => {
                 const hasKeyboard = detail.keyboardSuccess;
-                const hasHover = detail.mouseHoverSuccess;
-                const hasClick = detail.mouseClickSuccess;
 
                 console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
                 console.log(`     Keyboard: ${hasKeyboard ? '✅' : '❌'}`);
-                console.log(`     Hover: ${hasHover ? '✅' : '❌'}`);
-                console.log(`     Click: ${hasClick ? '✅' : '❌'}`);
             });
         }
 
@@ -2801,13 +2775,9 @@ export class MenuTester {
 
             results.mobile.details.forEach((detail, index) => {
                 const hasKeyboard = detail.keyboardSuccess;
-                const hasHover = detail.mouseHoverSuccess;
-                const hasClick = detail.mouseClickSuccess;
 
                 console.log(`  ${index + 1}. Toggle: ${detail.toggleSelector} -> Menu: ${detail.menuId}`);
                 console.log(`     Keyboard: ${hasKeyboard ? '✅' : '❌'}`);
-                console.log(`     Hover: ${hasHover ? '✅' : '❌'}`);
-                console.log(`     Click: ${hasClick ? '✅' : '❌'}`);
             });
         }
         
@@ -2835,8 +2805,6 @@ export class MenuTester {
                     console.log(`${index + 1}. Menu ID: ${menu.menuId}`);
                     console.log(`   Toggle Selector: ${menu.toggleDetails?.toggleSelector}`);
                     console.log(`   Success: ${menu.toggleDetails?.keyboardSuccess}`);
-                    console.log(`   Hover Success: ${menu.toggleDetails?.mouseHoverSuccess}`);
-                    console.log(`   Click Success: ${menu.toggleDetails?.mouseClickSuccess}`);
                     if (menu.toggleDetails?.error) {
                         console.log(`   Error: ${menu.toggleDetails.error}`);
                     }
