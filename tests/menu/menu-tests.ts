@@ -1255,8 +1255,6 @@ export class MenuTester {
             if (focusedElement.isLink) {
                 // Get the actual element to check visibility
                 const element = await this.page.locator(focusedElement.elementPath).first();
-
-                const log = await element.evaluate( (el) => console.log( el.textContent));
                 
                 // Use the comprehensive isElementTrulyVisible function
                 const isVisible = await isElementTrulyVisible(element);
